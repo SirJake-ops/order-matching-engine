@@ -2,7 +2,20 @@
 // Created by Jacob Pagan on 9/16/2025.
 //
 
-#ifndef TRADINGEXCHANGE_ORDERBOOKSIMULATOR_H
-#define TRADINGEXCHANGE_ORDERBOOKSIMULATOR_H
+#include <string>
+#include <vector>
+#include "../pricing/MarkPrice.h"
 
-#endif //TRADINGEXCHANGE_ORDERBOOKSIMULATOR_H
+namespace market {
+    class OrderBookSimulator {
+    public:
+        void onPriceUpdate(const MarkPrice& price) {
+            _last_price = price;
+        }
+
+        [[nodiscard]] const MarkPrice& getLatestPrice() const { return _last_price; }
+
+    private:
+        MarkPrice _last_price{"", 0.0, 0.0, 0.0, 0};
+    };
+}

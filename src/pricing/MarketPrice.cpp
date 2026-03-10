@@ -3,21 +3,31 @@
 //
 
 #include <memory>
+#include <string>
 #include <random>
-
 #include "MarkPrice.h"
+#include "PriceGenerator.h"
 
-market::MarkPrice *market::MarkPrice::generatePrice(const std::string &symbol) const {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<> distribution(-99999, 99999);
-    std::uniform_int_distribution<std::uint64_t> distributionInt(0, 999999);
+namespace market {
+    MarkPrice PriceGenerator::generatePrice(const std::string &symbol) {
+        static std::random_device rd;
+        static std::mt19937 gen(rd());
+        std::uniform_real_distribution<> distribution(100.0, 500.0);
+        std::uniform_int_distribution<std::uint64_t> distributionInt(100, 10000);
 
-    double price = distribution(gen);
-    double ask = distribution(gen);
-    double last = distribution(gen);
-    std::uint64_t volume = distributionInt(gen);
-    const auto newPrice = std::make_shared<MarkPrice>(symbol, price, ask, last, volume);
+        const double bid = distribution(gen);
+        const double ask = bid + 0.05; // Tight spread for now
+        const double last = bid;
+        const std::uint64_t volume = distributionInt(gen);
 
-    return newPrice.get();
+        return MarkPrice(symbol, bid, ask, last, volume);
+    }
+
+    std::vector<MarkPrice> PriceGenerator::generatePrices(const std::vector<std::string> &symbols) {
+        std::vector<MarkPrice> prices;
+        for (const auto& symbol : symbols) {
+            prices.push_back(generatePrice(symbol));
+        }
+        return prices;
+    }
 }

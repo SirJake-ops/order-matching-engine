@@ -1,9 +1,35 @@
 #include <iostream>
+#include <vector>
+#include <thread>
+#include <chrono>
 
-int main() {
+#include "events/event_bus.h"
+#include "simulation/MarketSimulator.h"
+#include "orderbook/OrderBookSimulator.h"
 
-    const auto Print = [](const std::string& message){std::cout << message << std::endl;};
+[[noreturn]] int main() {
+    events::event_bus bus;
+    market::OrderBookSimulator book;
 
-    Print("Hello World!");
+    bus.subscribe("market_data", [](const std::string& msg) {
+        std::cout << "[BOOK UPDATER] Received: " << msg << std::endl;
+    });
 
+    std::vector<std::string> symbols = {"AAPL", "GOOGL", "MSFT"};
+    market::MarketSimulator simulator(bus, symbols);
+
+    std::cout << "Starting Market Data Service..." << std::endl;
+
+    // for (int i = 0; i < 5; ++i) {
+    //     simulator.update();
+    //     std::this_thread::sleep_for(std::chrono::seconds(1));
+    // }
+
+
+    while (true) {
+        simulator.update();
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+
+    std::cout << "Service stopped." << std::endl;
 }

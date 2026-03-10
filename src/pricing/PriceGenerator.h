@@ -5,13 +5,16 @@
 #ifndef TRADINGEXCHANGE_PRICEGENERATOR_H
 #define TRADINGEXCHANGE_PRICEGENERATOR_H
 
-class PriceGenerator {
-public:
+#include "MarkPrice.h"
+#include <string>
+#include <vector>
 
-
-
-private:
-
-};
+namespace market {
+    class PriceGenerator {
+    public:
+        static MarkPrice generatePrice(const std::string &symbol);
+        static std::vector<MarkPrice> generatePrices(const std::vector<std::string> &symbols);
+    };
+}
 
 #endif //TRADINGEXCHANGE_PRICEGENERATOR_H

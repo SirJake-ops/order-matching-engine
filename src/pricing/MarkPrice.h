@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <ctime>
 #include <string>
+#include <vector>
 #include <utility>
 
 namespace market {
@@ -18,17 +19,19 @@ namespace market {
             _timestamp = std::time(nullptr);
         }
 
-        MarkPrice(MarkPrice &&other) noexcept {
-            _symbol = std::move(other._symbol);
-            _bid = other._bid;
-            _ask = other._ask;
-            _last = other._last;
-            _volume = other._volume;
-            _timestamp = std::time(nullptr);
-        }
+        MarkPrice(const MarkPrice &other) = default;
+        MarkPrice& operator=(const MarkPrice &other) = default;
+
+        MarkPrice(MarkPrice &&other) noexcept = default;
+        MarkPrice& operator=(MarkPrice &&other) noexcept = default;
 
 
-        [[nodiscard]] MarkPrice *generatePrice(const std::string &symbol) const;
+        [[nodiscard]] std::string getSymbol() const { return _symbol; }
+        [[nodiscard]] double getBid() const { return _bid; }
+        [[nodiscard]] double getAsk() const { return _ask; }
+        [[nodiscard]] double getLast() const { return _last; }
+        [[nodiscard]] uint64_t getVolume() const { return _volume; }
+        [[nodiscard]] std::time_t getTimestamp() const { return _timestamp; }
 
     private:
         std::string _symbol;

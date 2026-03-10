@@ -14,6 +14,7 @@
 #include <boost/serialization/string.hpp>
 #include <sodium.h>
 
+// TODO: The code below is for learning purposes only, this is pulled from the boost.org website for signing a transaction for a crypto wallet
 namespace event_types {
     struct Transaction {
         std::string &_sender;

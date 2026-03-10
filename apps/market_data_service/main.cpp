@@ -20,12 +20,6 @@
 
     std::cout << "Starting Market Data Service..." << std::endl;
 
-    // for (int i = 0; i < 5; ++i) {
-    //     simulator.update();
-    //     std::this_thread::sleep_for(std::chrono::seconds(1));
-    // }
-
-
     while (true) {
         simulator.update();
         std::this_thread::sleep_for(std::chrono::seconds(1));

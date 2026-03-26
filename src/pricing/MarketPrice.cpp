@@ -5,8 +5,8 @@
 #include <memory>
 #include <string>
 #include <random>
-#include "MarkPrice.h"
-#include "PriceGenerator.h"
+#include "pricing/MarkPrice.h"
+#include "pricing/PriceGenerator.h"
 
 namespace market {
     MarkPrice PriceGenerator::generatePrice(const std::string &symbol) {

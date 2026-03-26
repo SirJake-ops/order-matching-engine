@@ -21,23 +21,29 @@ namespace server {
         try {
             boost::asio::io_context io_context(1);
             tcp::acceptor acceptor(io_context, tcp::endpoint(tcp::v4(), _port));
-
             for (;;) {
                 tcp::socket socket(io_context);
-                acceptor.accept(socket);
+                try {
+                    acceptor.accept(socket);
 
-                boost::beast::flat_buffer buffer;
-                Request request;
-                http::read(socket, buffer, request);
+                    boost::beast::flat_buffer buffer;
+                    Request request;
+                    http::read(socket, buffer, request);
 
-                const auto response = handleRequest(request);
-                http::write(socket, response);
+                    const auto response = handleRequest(request);
+                    http::write(socket, response);
+
+                    boost::system::error_code error_code;
+                    socket.shutdown(tcp::socket::shutdown_send, error_code);
+                } catch (const std::exception &exception) {
+                    std::cerr << "Request handing error: " << exception.what() << std::endl;
+                }
 
                 boost::system::error_code error_code;
                 socket.shutdown(tcp::socket::shutdown_send, error_code);
             }
-        } catch (const std::exception &exception) {
-            std::cerr << "Server exception: " << exception.what() << std::endl;
+        } catch (const std::exception &e) {
+            std::cerr << "Server startup error: " << e.what() << std::endl;
         }
     }
 

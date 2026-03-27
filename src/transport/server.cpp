@@ -17,30 +17,19 @@ namespace server {
         : _market_data_store(std::move(market_data_store)), _port(port) {
     }
 
-    void Server::run() const {
+    void Server::run() {
         try {
             boost::asio::io_context io_context(1);
             tcp::acceptor acceptor(io_context, tcp::endpoint(tcp::v4(), _port));
             for (;;) {
                 tcp::socket socket(io_context);
+
                 try {
                     acceptor.accept(socket);
-
-                    boost::beast::flat_buffer buffer;
-                    Request request;
-                    http::read(socket, buffer, request);
-
-                    const auto response = handleRequest(request);
-                    http::write(socket, response);
-
-                    boost::system::error_code error_code;
-                    socket.shutdown(tcp::socket::shutdown_send, error_code);
+                    handleSession(std::move(socket));
                 } catch (const std::exception &exception) {
                     std::cerr << "Request handing error: " << exception.what() << std::endl;
                 }
-
-                boost::system::error_code error_code;
-                socket.shutdown(tcp::socket::shutdown_send, error_code);
             }
         } catch (const std::exception &e) {
             std::cerr << "Server startup error: " << e.what() << std::endl;
@@ -127,5 +116,90 @@ namespace server {
         }
 
         return decoded;
+    }
+
+    void Server::handleSession(boost::asio::ip::tcp::socket socket) {
+        boost::beast::flat_buffer buffer;
+        Request request;
+        http::read(socket, buffer, request);
+        if (isWebSocketUpgrade(request)) {
+            boost::beast::websocket::stream<boost::asio::ip::tcp::socket> ws{std::move(socket)};
+            ws.accept(request);
+            handleWebSocketSession(ws);
+        } else {
+            const auto response = handleRequest(request);
+            http::write(socket, response);
+
+            boost::system::error_code error_code;
+            socket.shutdown(tcp::socket::shutdown_send, error_code);
+        }
+    }
+
+    void Server::handleWebSocketSession(boost::beast::websocket::stream<boost::asio::ip::tcp::socket> &ws) {
+        boost::beast::flat_buffer buffer;
+        for (;;) {
+            buffer.clear();
+            ws.read(buffer);
+            std::string message = boost::beast::buffers_to_string(buffer.data());
+            const auto parsed_message = parseWebSocketMessage(buffer);
+
+            switch (parsed_message.type) {
+                case WebSocketMessageType::Ping:
+                    ws.write(boost::asio::buffer(std::string(R"({"type":"pong"})")));
+                    continue;
+                case WebSocketMessageType::Subscribe:
+                    ws.write(boost::asio::buffer(std::string(R"({"type":"subscribed"})")));
+                    continue;
+                case WebSocketMessageType::Unsubscribe:
+                    ws.write(boost::asio::buffer(std::string(R"({"type":"unsubscribed"})")));
+            }
+
+
+            ws.write(boost::asio::buffer(std::string(R"({"error":"unknown_message"})")));
+        }
+    }
+
+
+    Server::WebSocketMessage Server::parseWebSocketMessage(const boost::beast::flat_buffer &buffer) {
+        const std::string message = boost::beast::buffers_to_string(buffer.data());
+
+        if (message == "ping") {
+            return WebSocketMessage{WebSocketMessageType::Ping};
+        }
+
+        constexpr std::string_view subscribed_prefix = "subscribe";
+        if (message.rfind(subscribed_prefix.data(), 0) == 0 && message.size() > subscribed_prefix.size()) {
+            return {
+                WebSocketMessageType::Subscribe,
+                message.substr(subscribed_prefix.size())
+            };
+        }
+
+        constexpr std::string_view unsubscribed_prefix = "unsubscribe";
+        if (message.rfind(subscribed_prefix.data(), 0) == 0 && message.size() > subscribed_prefix.size()) {
+            return {
+                WebSocketMessageType::Unsubscribe,
+                message.substr(subscribed_prefix.size())
+            };
+        }
+
+        return {WebSocketMessageType::Unknown};
+    }
+
+    void Server::broadcastPriceUpdate(const market::MarkPrice &price) {
+    }
+
+    bool Server::isWebSocketUpgrade(const Request &request) {
+        return boost::beast::websocket::is_upgrade(request);
+    }
+
+    std::string Server::buildPriceUpdateMessage(const market::MarkPrice &price) {
+        return "";
+    }
+
+    void Server::registerSession(const WebsocketSession &session) {
+    }
+
+    void Server::unregisterSession(const WebsocketSession &session) {
     }
 }

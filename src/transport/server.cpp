@@ -123,9 +123,11 @@ namespace server {
         Request request;
         http::read(socket, buffer, request);
         if (isWebSocketUpgrade(request)) {
-            boost::beast::websocket::stream<boost::asio::ip::tcp::socket> ws{std::move(socket)};
-            ws.accept(request);
-            handleWebSocketSession(ws);
+            const auto session = std::make_shared<boost::beast::websocket::stream<tcp::socket> >(std::move(socket));
+            session->accept(request);
+            registerSession(session);
+            handleWebSocketSession(*session);
+            unregisterSession(session);
         } else {
             const auto response = handleRequest(request);
             http::write(socket, response);
@@ -140,7 +142,7 @@ namespace server {
         for (;;) {
             buffer.clear();
             ws.read(buffer);
-            std::string message = boost::beast::buffers_to_string(buffer.data());
+
             const auto parsed_message = parseWebSocketMessage(buffer);
 
             switch (parsed_message.type) {
@@ -152,6 +154,7 @@ namespace server {
                     continue;
                 case WebSocketMessageType::Unsubscribe:
                     ws.write(boost::asio::buffer(std::string(R"({"type":"unsubscribed"})")));
+                    continue;
             }
 
 
@@ -167,19 +170,19 @@ namespace server {
             return WebSocketMessage{WebSocketMessageType::Ping};
         }
 
-        constexpr std::string_view subscribed_prefix = "subscribe";
-        if (message.rfind(subscribed_prefix.data(), 0) == 0 && message.size() > subscribed_prefix.size()) {
+        constexpr std::string_view subscribed = "subscribe:";
+        if (message.rfind(subscribed.data(), 0) == 0 && message.size() > subscribed.size()) {
             return {
                 WebSocketMessageType::Subscribe,
-                message.substr(subscribed_prefix.size())
+                message.substr(subscribed.size())
             };
         }
 
-        constexpr std::string_view unsubscribed_prefix = "unsubscribe";
-        if (message.rfind(subscribed_prefix.data(), 0) == 0 && message.size() > subscribed_prefix.size()) {
+        constexpr std::string_view unsubscribed = "unsubscribe:";
+        if (message.rfind(unsubscribed.data(), 0) == 0 && message.size() > unsubscribed.size()) {
             return {
                 WebSocketMessageType::Unsubscribe,
-                message.substr(subscribed_prefix.size())
+                message.substr(unsubscribed.size())
             };
         }
 
@@ -187,6 +190,18 @@ namespace server {
     }
 
     void Server::broadcastPriceUpdate(const market::MarkPrice &price) {
+        const auto message = buildPriceUpdateMessage(price);
+        std::lock_guard lock(_sessions_mutex);
+        for (auto it = _sessions.begin(); it != _sessions.end(); ++it) {
+            boost::system::error_code ec;
+            (*it)->write(boost::asio::buffer(message), ec);
+
+            if (ec) {
+                it = _sessions.erase(it);
+                continue;
+            }
+            ++it;
+        }
     }
 
     bool Server::isWebSocketUpgrade(const Request &request) {
@@ -194,12 +209,16 @@ namespace server {
     }
 
     std::string Server::buildPriceUpdateMessage(const market::MarkPrice &price) {
-        return "";
+        return "{\"type\":\"price_update\",\"price\":" + std::to_string(price.getBid()) + "}";
     }
 
     void Server::registerSession(const WebsocketSession &session) {
+        std::lock_guard lock(_sessions_mutex);
+        _sessions.push_back(session);
     }
 
     void Server::unregisterSession(const WebsocketSession &session) {
+        std::lock_guard lock(_sessions_mutex);
+        _sessions.erase(std::ranges::remove(_sessions, session).begin(), _sessions.end());
     }
 }

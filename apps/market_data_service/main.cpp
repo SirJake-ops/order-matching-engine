@@ -19,8 +19,26 @@ int main() {
         std::cout << "[BOOK UPDATER] Received: " << msg << std::endl;
     });
 
-    std::vector<std::string> symbols = {"BTC/USD", "ETH/USD", "AAPL"};
-    market::MarketSimulator simulator(bus, symbols);
+    const std::vector<std::string> symbols = {
+        "AAPL",
+        "MSFT",
+        "NVDA",
+        "AMZN",
+        "GOOGL",
+        "META",
+        "TSLA",
+        "JPM",
+        "BAC",
+        "XOM",
+        "SPY",
+        "QQQ",
+        "BTC/USD",
+        "ETH/USD",
+        "SOL/USD",
+        "EUR/USD",
+        "GBP/USD"
+    };
+    const market::MarketSimulator simulator(bus, symbols);
     server::Server http_server(market_data_store, 8080);
 
     std::cout << "Starting Market Data Service..." << std::endl;

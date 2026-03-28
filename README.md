@@ -44,8 +44,3 @@ Build the project, then run:
 ```
 
 The current application loop starts the market simulation and emits mock market updates continuously.
-
-## Notes
-
-- Coverage flags are enabled in the root `CMakeLists.txt`.
-- The top-level application is still evolving; transport and websocket behavior are not fully complete yet.

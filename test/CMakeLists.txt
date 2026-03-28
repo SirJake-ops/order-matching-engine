@@ -11,7 +11,10 @@ enable_testing()
 
 add_executable(
         TradingExchangeTest
-        main_test.cpp
+        test_main.cpp
+        market_data_store_test.cpp
+        market_simulator_test.cpp
+        server_test.cpp
 )
 
 target_link_libraries(TradingExchangeTest

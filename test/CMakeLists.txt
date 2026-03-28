@@ -9,22 +9,27 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 enable_testing()
 
-file(GLOB PARENT_SOURCES ../src/*.cpp)
-file(GLOB PARENT_HEADERS ../include/*.h)
-
 add_executable(
         TradingExchangeTest
-        main_test.cpp
-        ${PARENT_SOURCES}
+        test_main.cpp
+        market_data_store_test.cpp
+        market_simulator_test.cpp
+        server_test.cpp
 )
 
-target_include_directories(TradingExchangeTest PRIVATE ../include)
-
 target_link_libraries(TradingExchangeTest
+    PRIVATE
     GTest::gtest
     GTest::gtest_main
     GTest::gmock
+    simulation
+    orderbook
+    pricing
+    events
+    transport
 )
+
+target_include_directories(TradingExchangeTest PRIVATE ../include)
 
 include(GoogleTest)
 gtest_discover_tests(TradingExchangeTest)

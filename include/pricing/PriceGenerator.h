@@ -5,7 +5,7 @@
 #ifndef TRADINGEXCHANGE_PRICEGENERATOR_H
 #define TRADINGEXCHANGE_PRICEGENERATOR_H
 
-#include "MarkPrice.h"
+#include "pricing/MarkPrice.h"
 #include <string>
 #include <vector>
 

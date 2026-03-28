@@ -42,5 +42,3 @@ Build the project, then run:
 ```bash
 ./cmake-build-debug/market_data_service
 ```
-
-The current application loop starts the market simulation and emits mock market updates continuously.

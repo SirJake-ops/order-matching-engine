@@ -121,44 +121,64 @@ namespace server {
     void Server::handleSession(boost::asio::ip::tcp::socket socket) {
         boost::beast::flat_buffer buffer;
         Request request;
-        http::read(socket, buffer, request);
+
+        try {
+            http::read(socket, buffer, request);
+        } catch (const boost::system::system_error &exception) {
+            const auto code = exception.code();
+            if (code == boost::beast::http::error::end_of_stream || code == boost::asio::error::eof) {
+                return;
+            }
+
+            throw;
+        }
         if (isWebSocketUpgrade(request)) {
             const auto session = std::make_shared<boost::beast::websocket::stream<tcp::socket> >(std::move(socket));
             session->accept(request);
             registerSession(session);
             handleWebSocketSession(*session);
             unregisterSession(session);
-        } else {
-            const auto response = handleRequest(request);
-            http::write(socket, response);
-
-            boost::system::error_code error_code;
-            socket.shutdown(tcp::socket::shutdown_send, error_code);
+            return;
         }
+
+        const auto response = handleRequest(request);
+        http::write(socket, response);
+
+        boost::system::error_code error_code;
+        socket.shutdown(tcp::socket::shutdown_send, error_code);
     }
 
     void Server::handleWebSocketSession(boost::beast::websocket::stream<boost::asio::ip::tcp::socket> &ws) {
         boost::beast::flat_buffer buffer;
-        for (;;) {
-            buffer.clear();
-            ws.read(buffer);
+        try {
+            for (;;) {
+                buffer.clear();
+                ws.read(buffer);
 
-            const auto parsed_message = parseWebSocketMessage(buffer);
+                const auto parsed_message = parseWebSocketMessage(buffer);
 
-            switch (parsed_message.type) {
-                case WebSocketMessageType::Ping:
-                    ws.write(boost::asio::buffer(std::string(R"({"type":"pong"})")));
-                    continue;
-                case WebSocketMessageType::Subscribe:
-                    ws.write(boost::asio::buffer(std::string(R"({"type":"subscribed"})")));
-                    continue;
-                case WebSocketMessageType::Unsubscribe:
-                    ws.write(boost::asio::buffer(std::string(R"({"type":"unsubscribed"})")));
-                    continue;
+                switch (parsed_message.type) {
+                    case WebSocketMessageType::Ping:
+                        ws.write(boost::asio::buffer(std::string(R"({"type":"pong"})")));
+                        continue;
+                    case WebSocketMessageType::Subscribe:
+                        ws.write(boost::asio::buffer(std::string(R"({"type":"subscribed"})")));
+                        continue;
+                    case WebSocketMessageType::Unsubscribe:
+                        ws.write(boost::asio::buffer(std::string(R"({"type":"unsubscribed"})")));
+                        continue;
+                }
+
+                ws.write(boost::asio::buffer(std::string(R"({"error":"unknown_message"})")));
+            }
+        } catch (const boost::system::system_error &exception) {
+            const auto code = exception.code();
+            if (code == boost::beast::websocket::error::closed ||
+                code == boost::asio::error::eof) {
+                return;
             }
 
-
-            ws.write(boost::asio::buffer(std::string(R"({"error":"unknown_message"})")));
+            throw;
         }
     }
 
@@ -192,15 +212,15 @@ namespace server {
     void Server::broadcastPriceUpdate(const market::MarkPrice &price) {
         const auto message = buildPriceUpdateMessage(price);
         std::lock_guard lock(_sessions_mutex);
-        for (auto it = _sessions.begin(); it != _sessions.end(); ++it) {
+        for (auto it = _sessions.begin(); it != _sessions.end();) {
             boost::system::error_code ec;
             (*it)->write(boost::asio::buffer(message), ec);
 
             if (ec) {
                 it = _sessions.erase(it);
-                continue;
+            } else {
+                ++it;
             }
-            ++it;
         }
     }
 

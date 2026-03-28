@@ -30,9 +30,10 @@ int main() {
     });
 
     while (true) {
-        for (const auto &price : simulator.update()) {
+        for (const auto &price: simulator.update()) {
             book.onPriceUpdate(price);
             market_data_store->updatePrice(price);
+            http_server.broadcastPriceUpdate(price);
         }
 
         std::this_thread::sleep_for(std::chrono::seconds(1));

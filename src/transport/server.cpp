@@ -7,6 +7,7 @@
 #include <cctype>
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 #include <utility>
 
 namespace http = boost::beast::http;
@@ -26,7 +27,7 @@ namespace server {
 
                 try {
                     acceptor.accept(socket);
-                    handleSession(std::move(socket));
+                    std::thread(&Server::handleSession, this, std::move(socket)).detach();
                 } catch (const std::exception &exception) {
                     std::cerr << "Request handing error: " << exception.what() << std::endl;
                 }
@@ -136,7 +137,12 @@ namespace server {
             const auto session = std::make_shared<boost::beast::websocket::stream<tcp::socket> >(std::move(socket));
             session->accept(request);
             registerSession(session);
-            handleWebSocketSession(*session);
+            try {
+                handleWebSocketSession(*session);
+            } catch (...) {
+                unregisterSession(session);
+                throw;
+            }
             unregisterSession(session);
             return;
         }

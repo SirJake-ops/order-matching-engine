@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.28)
 project(TradingExchange)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 enable_testing()
@@ -40,6 +40,7 @@ target_link_libraries(simulation
 
 add_library(orderbook
         src/orderbook/OrderBookSimulator.cpp
+        src/orderbook/OrderBook.cpp
 )
 
 target_include_directories(orderbook
@@ -49,6 +50,7 @@ target_include_directories(orderbook
 
 add_library(events
         src/events/event_bus.cpp
+        include/orderbook/OrderBook.h
 )
 
 target_include_directories(events

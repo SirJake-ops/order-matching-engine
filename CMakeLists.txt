@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.30)
+cmake_minimum_required(VERSION 3.28)
 project(TradingExchange)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -7,18 +7,53 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
 
-include_directories(include)
+find_package(Boost REQUIRED)
 
-file(GLOB SOURCES src/*.cpp)
-file(GLOB HEADERS include/*.h)
+include_directories(include src)
+
+
+add_library(pricing
+        src/pricing/MarketPrice.cpp
+)
+
+add_library(simulation
+        src/simulation/MarketSimulator.h
+        src/simulation/MarketSimulator.cpp
+)
+
+target_link_libraries(simulation
+        PUBLIC
+        pricing
+        events
+)
+
+add_library(orderbook
+        src/orderbook/OrderBookSimulator.h
+        src/orderbook/OrderBookSimulator.cpp
+)
+
+add_library(events
+        src/events/event_bus.cpp
+        src/events/event_types/event_types.h
+)
+
+add_library(transport
+        src/transport/server.cpp
+)
+
+
+add_executable(market_data_service
+        apps/market_data_service/main.cpp
+)
+
+target_link_directories(market_data_service PRIVATE Boost::filesystem)
+
+target_link_libraries(market_data_service
+        PRIVATE
+        simulation
+        orderbook
+        transport
+)
+
 
 add_subdirectory(test)
-
-add_executable(TradingExchange main.cpp ${SOURCES}
-        include/PriceGenerator.h
-        include/Configuration.h
-        include/MarkPrice.h
-        src/MarketPrice.cpp
-        include/MarketSimulator.h
-        include/OrderBookSimulator.h
-        include/Instrument.h)

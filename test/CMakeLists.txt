@@ -1,3 +1,4 @@
+cmake_minimum_required(VERSION 3.28)
 include(FetchContent)
 FetchContent_Declare(
         googletest
@@ -23,7 +24,6 @@ target_link_libraries(TradingExchangeTest
     GTest::gtest
     GTest::gtest_main
     GTest::gmock
-    GTest::gmock_main
 )
 
 include(GoogleTest)

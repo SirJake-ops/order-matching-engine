@@ -4,7 +4,7 @@
 
 #include <string>
 #include <vector>
-#include "../pricing/MarkPrice.h"
+#include "pricing/MarkPrice.h"
 
 namespace market {
     class OrderBookSimulator {

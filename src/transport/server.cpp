@@ -1,12 +1,13 @@
 //
-// Created by jake on 2/24/26.
+// Created by Jacob Pagan on 2/24/26.
 //
 
 #include "transport/server.h"
 
 #include <cctype>
+#include <iomanip>
 #include <iostream>
-#include <stdexcept>
+#include <sstream>
 #include <thread>
 #include <utility>
 
@@ -14,237 +15,236 @@ namespace http = boost::beast::http;
 using tcp = boost::asio::ip::tcp;
 
 namespace server {
-    Server::Server(std::shared_ptr<MarketDataStore> market_data_store, const unsigned short port)
-        : _market_data_store(std::move(market_data_store)), _port(port) {
-    }
+Server::Server(std::shared_ptr<MarketDataStore> market_data_store, const unsigned short port)
+    : _market_data_store(std::move(market_data_store)), _port(port) {}
 
-    void Server::run() {
-        try {
-            boost::asio::io_context io_context(1);
-            tcp::acceptor acceptor(io_context, tcp::endpoint(tcp::v4(), _port));
-            for (;;) {
-                tcp::socket socket(io_context);
+void Server::run() {
+    try {
+        boost::asio::io_context io_context(1);
+        tcp::acceptor acceptor(io_context, tcp::endpoint(tcp::v4(), _port));
+        for (;;) {
+            tcp::socket socket(io_context);
 
-                try {
-                    acceptor.accept(socket);
-                    std::thread(&Server::handleSession, this, std::move(socket)).detach();
-                } catch (const std::exception &exception) {
-                    std::cerr << "Request handing error: " << exception.what() << std::endl;
-                }
+            try {
+                acceptor.accept(socket);
+                std::thread(&Server::handleSession, this, std::move(socket)).detach();
+            } catch (const std::exception &exception) {
+                std::cerr << "Request handing error: " << exception.what() << std::endl;
             }
-        } catch (const std::exception &e) {
-            std::cerr << "Server startup error: " << e.what() << std::endl;
         }
+    } catch (const std::exception &e) {
+        std::cerr << "Server startup error: " << e.what() << std::endl;
     }
+}
 
-    Server::Response Server::handleRequest(const Request &request) const {
-        Response response;
-        response.version(request.version());
-        response.keep_alive(false);
-        response.set(http::field::content_type, "application/json");
+Server::Response Server::handleRequest(const Request &request) const {
+    Response response;
+    response.version(request.version());
+    response.keep_alive(false);
+    response.set(http::field::content_type, "application/json");
 
-        if (request.method() != http::verb::get) {
-            response.result(http::status::method_not_allowed);
-            response.body() = R"({"error":"method_not_allowed"})";
-            response.prepare_payload();
-            return response;
-        }
-
-        const std::string target = std::string(request.target());
-        constexpr std::string_view symbol_path_prefix = "/api/market/prices/";
-        if (target.rfind(symbol_path_prefix.data(), 0) == 0 && target.size() > symbol_path_prefix.size()) {
-            const std::string symbol = decodeUrlComponent(target.substr(symbol_path_prefix.size()));
-            const auto price = _market_data_store->getPriceForSymbol(symbol);
-            if (!price.has_value()) {
-                response.result(http::status::not_found);
-                response.body() = R"({"error":"symbol_not_found"})";
-                response.prepare_payload();
-                return response;
-            }
-
-            response.result(http::status::ok);
-            response.body() = buildPriceResponse(price.value());
-            response.prepare_payload();
-            return response;
-        }
-
-        response.result(http::status::not_found);
-        response.body() = R"({"error":"not_found"})";
+    if (request.method() != http::verb::get) {
+        response.result(http::status::method_not_allowed);
+        response.body() = R"({"error":"method_not_allowed"})";
         response.prepare_payload();
         return response;
     }
 
-    std::string Server::buildPriceResponse(const market::MarkPrice &price) const {
-        return "{\"symbol\":\"" + escapeJson(price.getSymbol()) +
-               "\",\"bid\":" + std::to_string(price.getBid()) +
-               ",\"ask\":" + std::to_string(price.getAsk()) +
-               ",\"last\":" + std::to_string(price.getLast()) +
-               ",\"volume\":" + std::to_string(price.getVolume()) +
-               ",\"timestamp\":" + std::to_string(price.getTimestamp()) +
-               "}";
-    }
-
-    std::string Server::escapeJson(const std::string &value) {
-        std::string escaped;
-        escaped.reserve(value.size());
-
-        for (const char character: value) {
-            if (character == '"' || character == '\\') {
-                escaped.push_back('\\');
-            }
-
-            escaped.push_back(character);
+    const std::string target = std::string(request.target());
+    constexpr std::string_view symbol_path_prefix = "/api/market/prices/";
+    if (target.rfind(symbol_path_prefix.data(), 0) == 0
+        && target.size() > symbol_path_prefix.size()) {
+        const std::string symbol = decodeUrlComponent(target.substr(symbol_path_prefix.size()));
+        const auto price = _market_data_store->getPriceForSymbol(symbol);
+        if (!price.has_value()) {
+            response.result(http::status::not_found);
+            response.body() = R"({"error":"symbol_not_found"})";
+            response.prepare_payload();
+            return response;
         }
 
-        return escaped;
+        response.result(http::status::ok);
+        response.body() = buildPriceResponse(price.value());
+        response.prepare_payload();
+        return response;
     }
 
-    std::string Server::decodeUrlComponent(const std::string &value) {
-        std::string decoded;
-        decoded.reserve(value.size());
+    response.result(http::status::not_found);
+    response.body() = R"({"error":"not_found"})";
+    response.prepare_payload();
+    return response;
+}
 
-        for (std::size_t index = 0; index < value.size(); ++index) {
-            if (value[index] == '%' && index + 2 < value.size() &&
-                std::isxdigit(static_cast<unsigned char>(value[index + 1])) &&
-                std::isxdigit(static_cast<unsigned char>(value[index + 2]))) {
-                const std::string hex = value.substr(index + 1, 2);
-                decoded.push_back(static_cast<char>(std::stoi(hex, nullptr, 16)));
-                index += 2;
-                continue;
-            }
+std::string Server::buildPriceResponse(const market::MarkPrice &price) const {
 
-            decoded.push_back(value[index] == '+' ? ' ' : value[index]);
+    std::ostringstream oss;
+
+    oss << std::fixed << std::setprecision(2);
+    oss << R"({"symbol":")" << escapeJson(price.getSymbol()) << R"(",)"
+        << R"("bid":)" << price.getBid() << ","
+        << R"("ask":)" << price.getAsk() << ","
+        << R"("last":)" << price.getLast() << ","
+        << R"("volume":)" << price.getVolume() << ","
+        << R"("timestamp":)" << price.getTimestamp() << "}";
+
+    return oss.str();
+}
+
+std::string Server::escapeJson(const std::string &value) {
+    std::string escaped;
+    escaped.reserve(value.size());
+
+    for (const char character : value) {
+        if (character == '"' || character == '\\') {
+            escaped.push_back('\\');
         }
 
-        return decoded;
+        escaped.push_back(character);
     }
 
-    void Server::handleSession(boost::asio::ip::tcp::socket socket) {
-        boost::beast::flat_buffer buffer;
-        Request request;
+    return escaped;
+}
 
-        try {
-            http::read(socket, buffer, request);
-        } catch (const boost::system::system_error &exception) {
-            const auto code = exception.code();
-            if (code == boost::beast::http::error::end_of_stream || code == boost::asio::error::eof) {
-                return;
-            }
+std::string Server::decodeUrlComponent(const std::string &value) {
+    std::string decoded;
+    decoded.reserve(value.size());
 
-            throw;
+    for (std::size_t index = 0; index < value.size(); ++index) {
+        if (value[index] == '%' && index + 2 < value.size()
+            && std::isxdigit(static_cast<unsigned char>(value[index + 1]))
+            && std::isxdigit(static_cast<unsigned char>(value[index + 2]))) {
+            const std::string hex = value.substr(index + 1, 2);
+            decoded.push_back(static_cast<char>(std::stoi(hex, nullptr, 16)));
+            index += 2;
+            continue;
         }
-        if (isWebSocketUpgrade(request)) {
-            const auto session = std::make_shared<boost::beast::websocket::stream<tcp::socket> >(std::move(socket));
-            session->accept(request);
-            registerSession(session);
-            try {
-                handleWebSocketSession(*session);
-            } catch (...) {
-                unregisterSession(session);
-                throw;
-            }
-            unregisterSession(session);
+
+        decoded.push_back(value[index] == '+' ? ' ' : value[index]);
+    }
+
+    return decoded;
+}
+
+void Server::handleSession(boost::asio::ip::tcp::socket socket) {
+    boost::beast::flat_buffer buffer;
+    Request request;
+
+    try {
+        http::read(socket, buffer, request);
+    } catch (const boost::system::system_error &exception) {
+        const auto code = exception.code();
+        if (code == boost::beast::http::error::end_of_stream || code == boost::asio::error::eof) {
             return;
         }
 
-        const auto response = handleRequest(request);
-        http::write(socket, response);
-
-        boost::system::error_code error_code;
-        socket.shutdown(tcp::socket::shutdown_send, error_code);
+        throw;
     }
-
-    void Server::handleWebSocketSession(boost::beast::websocket::stream<boost::asio::ip::tcp::socket> &ws) {
-        boost::beast::flat_buffer buffer;
+    if (isWebSocketUpgrade(request)) {
+        const auto session =
+            std::make_shared<boost::beast::websocket::stream<tcp::socket>>(std::move(socket));
+        session->accept(request);
+        registerSession(session);
         try {
-            for (;;) {
-                buffer.clear();
-                ws.read(buffer);
-
-                const auto parsed_message = parseWebSocketMessage(buffer);
-
-                switch (parsed_message.type) {
-                    case WebSocketMessageType::Ping:
-                        ws.write(boost::asio::buffer(std::string(R"({"type":"pong"})")));
-                        continue;
-                    case WebSocketMessageType::Subscribe:
-                        ws.write(boost::asio::buffer(std::string(R"({"type":"subscribed"})")));
-                        continue;
-                    case WebSocketMessageType::Unsubscribe:
-                        ws.write(boost::asio::buffer(std::string(R"({"type":"unsubscribed"})")));
-                        continue;
-                }
-
-                ws.write(boost::asio::buffer(std::string(R"({"error":"unknown_message"})")));
-            }
-        } catch (const boost::system::system_error &exception) {
-            const auto code = exception.code();
-            if (code == boost::beast::websocket::error::closed ||
-                code == boost::asio::error::eof) {
-                return;
-            }
-
+            handleWebSocketSession(*session);
+        } catch (...) {
+            unregisterSession(session);
             throw;
         }
+        unregisterSession(session);
+        return;
     }
 
+    const auto response = handleRequest(request);
+    http::write(socket, response);
 
-    Server::WebSocketMessage Server::parseWebSocketMessage(const boost::beast::flat_buffer &buffer) {
-        const std::string message = boost::beast::buffers_to_string(buffer.data());
+    boost::system::error_code error_code;
+    socket.shutdown(tcp::socket::shutdown_send, error_code);
+}
 
-        if (message == "ping") {
-            return WebSocketMessage{WebSocketMessageType::Ping};
-        }
+void Server::handleWebSocketSession(
+    boost::beast::websocket::stream<boost::asio::ip::tcp::socket> &ws) {
+    boost::beast::flat_buffer buffer;
+    try {
+        for (;;) {
+            buffer.clear();
+            ws.read(buffer);
 
-        constexpr std::string_view subscribed = "subscribe:";
-        if (message.rfind(subscribed.data(), 0) == 0 && message.size() > subscribed.size()) {
-            return {
-                WebSocketMessageType::Subscribe,
-                message.substr(subscribed.size())
-            };
-        }
+            const auto parsed_message = parseWebSocketMessage(buffer);
 
-        constexpr std::string_view unsubscribed = "unsubscribe:";
-        if (message.rfind(unsubscribed.data(), 0) == 0 && message.size() > unsubscribed.size()) {
-            return {
-                WebSocketMessageType::Unsubscribe,
-                message.substr(unsubscribed.size())
-            };
-        }
-
-        return {WebSocketMessageType::Unknown};
-    }
-
-    void Server::broadcastPriceUpdate(const market::MarkPrice &price) {
-        const auto message = buildPriceUpdateMessage(price);
-        std::lock_guard lock(_sessions_mutex);
-        for (auto it = _sessions.begin(); it != _sessions.end();) {
-            boost::system::error_code ec;
-            (*it)->write(boost::asio::buffer(message), ec);
-
-            if (ec) {
-                it = _sessions.erase(it);
-            } else {
-                ++it;
+            switch (parsed_message.type) {
+            case WebSocketMessageType::Ping:
+                ws.write(boost::asio::buffer(std::string(R"({"type":"pong"})")));
+                continue;
+            case WebSocketMessageType::Subscribe:
+                ws.write(boost::asio::buffer(std::string(R"({"type":"subscribed"})")));
+                continue;
+            case WebSocketMessageType::Unsubscribe:
+                ws.write(boost::asio::buffer(std::string(R"({"type":"unsubscribed"})")));
+                continue;
             }
+
+            ws.write(boost::asio::buffer(std::string(R"({"error":"unknown_message"})")));
         }
-    }
+    } catch (const boost::system::system_error &exception) {
+        const auto code = exception.code();
+        if (code == boost::beast::websocket::error::closed || code == boost::asio::error::eof) {
+            return;
+        }
 
-    bool Server::isWebSocketUpgrade(const Request &request) {
-        return boost::beast::websocket::is_upgrade(request);
-    }
-
-    std::string Server::buildPriceUpdateMessage(const market::MarkPrice &price) {
-        return "{\"type\":\"price_update\",\"price\":" + std::to_string(price.getBid()) + "}";
-    }
-
-    void Server::registerSession(const WebsocketSession &session) {
-        std::lock_guard lock(_sessions_mutex);
-        _sessions.push_back(session);
-    }
-
-    void Server::unregisterSession(const WebsocketSession &session) {
-        std::lock_guard lock(_sessions_mutex);
-        _sessions.erase(std::ranges::remove(_sessions, session).begin(), _sessions.end());
+        throw;
     }
 }
+
+Server::WebSocketMessage Server::parseWebSocketMessage(const boost::beast::flat_buffer &buffer) {
+    const std::string message = boost::beast::buffers_to_string(buffer.data());
+
+    if (message == "ping") {
+        return WebSocketMessage{WebSocketMessageType::Ping};
+    }
+
+    constexpr std::string_view subscribed = "subscribe:";
+    if (message.rfind(subscribed.data(), 0) == 0 && message.size() > subscribed.size()) {
+        return {WebSocketMessageType::Subscribe, message.substr(subscribed.size())};
+    }
+
+    constexpr std::string_view unsubscribed = "unsubscribe:";
+    if (message.rfind(unsubscribed.data(), 0) == 0 && message.size() > unsubscribed.size()) {
+        return {WebSocketMessageType::Unsubscribe, message.substr(unsubscribed.size())};
+    }
+
+    return {WebSocketMessageType::Unknown};
+}
+
+void Server::broadcastPriceUpdate(const market::MarkPrice &price) {
+    const auto message = buildPriceUpdateMessage(price);
+    std::lock_guard lock(_sessions_mutex);
+    for (auto it = _sessions.begin(); it != _sessions.end();) {
+        boost::system::error_code ec;
+        (*it)->write(boost::asio::buffer(message), ec);
+
+        if (ec) {
+            it = _sessions.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+bool Server::isWebSocketUpgrade(const Request &request) {
+    return boost::beast::websocket::is_upgrade(request);
+}
+
+std::string Server::buildPriceUpdateMessage(const market::MarkPrice &price) {
+    return "{\"type\":\"price_update\",\"price\":" + std::to_string(price.getBid()) + "}";
+}
+
+void Server::registerSession(const WebsocketSession &session) {
+    std::lock_guard lock(_sessions_mutex);
+    _sessions.push_back(session);
+}
+
+void Server::unregisterSession(const WebsocketSession &session) {
+    std::lock_guard lock(_sessions_mutex);
+    _sessions.erase(std::ranges::remove(_sessions, session).begin(), _sessions.end());
+}
+} // namespace server

@@ -1,12 +1,12 @@
-#include <iostream>
-#include <thread>
 #include <chrono>
+#include <iostream>
 #include <memory>
+#include <thread>
 #include <vector>
 
 #include "events/event_bus.h"
-#include "simulation/MarketSimulator.h"
 #include "orderbook/OrderBookSimulator.h"
+#include "simulation/MarketSimulator.h"
 #include "transport/MarketDataStore.h"
 #include "transport/server.h"
 
@@ -20,35 +20,16 @@ int main() {
     });
 
     const std::vector<std::string> symbols = {
-        "AAPL",
-        "MSFT",
-        "NVDA",
-        "AMZN",
-        "GOOGL",
-        "META",
-        "TSLA",
-        "JPM",
-        "BAC",
-        "XOM",
-        "SPY",
-        "QQQ",
-        "BTC/USD",
-        "ETH/USD",
-        "SOL/USD",
-        "EUR/USD",
-        "GBP/USD"
-    };
+        "AAPL", "MSFT", "NVDA", "AMZN",    "GOOGL",   "META",    "TSLA",    "JPM",    "BAC",
+        "XOM",  "SPY",  "QQQ",  "BTC/USD", "ETH/USD", "SOL/USD", "EUR/USD", "GBP/USD"};
     const market::MarketSimulator simulator(bus, symbols);
     server::Server http_server(market_data_store, 8080);
 
     std::cout << "Starting Market Data Service..." << std::endl;
-
-    std::thread server_thread([&http_server]() {
-        http_server.run();
-    });
+    std::thread server_thread([&http_server]() { http_server.run(); });
 
     while (true) {
-        for (const auto &price: simulator.update()) {
+        for (const auto &price : simulator.update()) {
             book.onPriceUpdate(price);
             market_data_store->updatePrice(price);
             http_server.broadcastPriceUpdate(price);

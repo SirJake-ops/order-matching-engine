@@ -10,14 +10,14 @@ FetchContent_MakeAvailable(googletest)
 enable_testing()
 
 add_executable(
-        TradingExchangeTest
+        TradingExchangeEngineTest
         test_main.cpp
         market_data_store_test.cpp
         market_simulator_test.cpp
         server_test.cpp
 )
 
-target_link_libraries(TradingExchangeTest
+target_link_libraries(TradingExchangeEngineTest
     PRIVATE
     GTest::gtest
     GTest::gtest_main
@@ -29,7 +29,7 @@ target_link_libraries(TradingExchangeTest
     transport
 )
 
-target_include_directories(TradingExchangeTest PRIVATE ../include)
+target_include_directories(TradingExchangeEngineTest PRIVATE ../include)
 
 include(GoogleTest)
-gtest_discover_tests(TradingExchangeTest)
+gtest_discover_tests(TradingExchangeEngineTest)

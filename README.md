@@ -1,13 +1,13 @@
-# TradingExchange
+# Trading Exchange Engine
 
-`TradingExchange` is a C++20 market data playground built around a simple simulation pipeline. It currently generates mock market updates, routes them through an event bus, and includes the early transport-layer work needed for HTTP and WebSocket delivery.
+`trading-exchange-engine` is a C++20 market data and order book service built around a simple simulation pipeline. It currently generates mock market updates, routes them through an event bus, maintains order book components, and includes the early transport-layer work needed for HTTP and WebSocket delivery.
 
 ## Current Status
 
 - Market price generation is implemented.
 - The event bus and order book components exist.
 - The transport layer is under active refactor for HTTP and WebSocket support.
-- WebSocket backlog items are tracked in [pseudo-jira-websocket.md](/home/jake/cpp-projects/fluffy-parakeet/pseudo-jira-websocket.md).
+- WebSocket backlog items are tracked in [pseudo-jira-websocket.md](/home/jake/cpp-projects/trading-exchange-engine/pseudo-jira-websocket.md).
 
 ## Project Layout
 

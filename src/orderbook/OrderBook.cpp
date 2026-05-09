@@ -121,7 +121,7 @@ std::optional<orderbook::Order> orderbook::OrderBook::bestAsk() const {
     return orders_best_price.front();
 }
 
-bool orderbook::OrderBook::cancelOrder(const std::string &order_id) {
+bool orderbook::OrderBook::cancel_order(const std::string &order_id) {
     bool removed = false;
     auto remove_order = [&]<typename T>(T &book) {
         using BookT = std::decay_t<T>;
@@ -139,4 +139,47 @@ bool orderbook::OrderBook::cancelOrder(const std::string &order_id) {
     remove_order(_sell_orders);
 
     return removed;
+}
+
+std::vector<orderbook::Order> orderbook::OrderBook::get_orders() const {
+    std::vector<Order> orders;
+    std::ranges::copy(_buy_orders, std::back_inserter(orders));
+    std::ranges::copy(_sell_orders, std::back_inserter(orders));
+    return orders;
+}
+
+std::vector<std::pair<double, std::uint32_t>>
+orderbook::OrderBook::bid_depth(std::size_t levels) const {
+    if (levels == 0) {
+        return {};
+    }
+
+    std::vector<std::pair<double, std::uint32_t>> bids;
+    bids.reserve(levels);
+
+    for (const auto &[price, orders] : _buy_orders) {
+        bids.emplace_back(price, orders.size());
+        if (bids.size() == levels)
+            break;
+    }
+
+    return bids;
+}
+
+std::vector<std::pair<double, std::uint32_t>>
+orderbook::OrderBook::ask_depths(std::size_t levels) const {
+    if (levels == 0) {
+        return {};
+    }
+
+    std::vector<std::pair<double, std::uint32_t>> bids;
+    bids.reserve(levels);
+
+    for (const auto &[price, orders] : _sell_orders) {
+        bids.emplace_back(price, orders.size());
+        if (bids.size() == levels)
+            break;
+    }
+
+    return bids;
 }

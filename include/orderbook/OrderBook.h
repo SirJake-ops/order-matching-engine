@@ -4,60 +4,68 @@
 
 #ifndef TRADINGEXCHANGE_ORDERBOOK_H
 #define TRADINGEXCHANGE_ORDERBOOK_H
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <map>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace orderbook {
-    enum class Side {
-        BUY,
-        SELL,
-    };
+enum class Side {
+    BUY,
+    SELL,
+};
 
-    enum class OrderType {
-        LIMIT,
-        MARKET,
-    };
+enum class OrderType {
+    LIMIT,
+    MARKET,
+};
 
-    struct Order {
-        std::string _id;
-        std::string _symbol;
-        Side _side;
-        OrderType _type;
-        double _price;
-        int _quantity;
-        std::uint64_t _timestamp;
-    };
+struct Order {
+    std::string _id;
+    std::string _symbol;
+    Side _side;
+    OrderType _type;
+    double _price;
+    int _quantity;
+    std::uint64_t _timestamp;
+};
 
-    struct Trade {
-        std::string _buy_order_id;
-        std::string _sell_order_id;
-        std::string _symbol;
-        double _price;
-        int _quantity;
-        std::uint64_t _timestamp;
-    };
+struct Trade {
+    std::string _buy_order_id;
+    std::string _sell_order_id;
+    std::string _symbol;
+    double _price;
+    int _quantity;
+    std::uint64_t _timestamp;
+};
 
-    class OrderBook {
-    public:
-        OrderBook() = default;
-        ~OrderBook() = default;
+class OrderBook {
+  public:
+    OrderBook() = default;
+    ~OrderBook() = default;
 
-        std::vector<Trade> addOrder(const Order &order);
+    std::vector<Trade> addOrder(const Order &order);
+    std::vector<orderbook::Order> get_orders() const;
 
-        bool cancelOrder(const std::string &order_id);
+    bool cancel_order(const std::string &order_id);
 
-        std::optional<Order> bestBid() const;
+    [[nodiscard]] std::optional<Order> bestBid() const;
 
-        std::optional<Order> bestAsk() const;
+    [[nodiscard]] std::optional<Order> bestAsk() const;
 
-    private:
-        std::map<double, std::deque<Order>, std::greater<> > _buy_orders;
-        std::map<double, std::deque<Order>, std::less<> > _sell_orders;
-    };
-}
+    [[nodiscard]] std::vector<std::pair<double, std::uint32_t>> bid_depth(std::size_t levels) const;
+    [[nodiscard]] std::vector<std::pair<double, std::uint32_t>>
+    ask_depths(std::size_t levels) const;
 
-#endif //TRADINGEXCHANGE_ORDERBOOK_H
+  private:
+    std::map<double, std::deque<Order>, std::greater<>> _buy_orders;
+    std::map<double, std::deque<Order>, std::less<>> _sell_orders;
+    std::unordered_map<std::uint64_t, std::vector<Trade>> _order_index;
+};
+} // namespace orderbook
+
+#endif // TRADINGEXCHANGE_ORDERBOOK_H

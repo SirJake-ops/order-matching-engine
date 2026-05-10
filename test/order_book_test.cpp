@@ -232,4 +232,103 @@ namespace {
             std::runtime_error
         );
     }
+
+    TEST(OrderBookTest, RejectsEmptyIdEmptySymbolAndZeroQuantity) {
+        OrderBook book("AAPL");
+
+        EXPECT_THROW(
+            book.addOrder(makeOrder("", Side::BUY, 100.0, 1)),
+            std::runtime_error
+        );
+
+        EXPECT_THROW(
+            book.addOrder(makeOrder("buy-1", Side::BUY, 100.0, 1, 1, OrderType::LIMIT, "")),
+            std::runtime_error
+        );
+
+        EXPECT_THROW(
+            book.addOrder(makeOrder("buy-2", Side::BUY, 100.0, 0)),
+            std::runtime_error
+        );
+    }
+
+    TEST(OrderBookTest, EmptyBookReturnsNoBestOrdersAndNoDepth) {
+        OrderBook book("AAPL");
+
+        EXPECT_FALSE(book.bestBid().has_value());
+        EXPECT_FALSE(book.bestAsk().has_value());
+        EXPECT_TRUE(book.get_orders_buys().empty());
+        EXPECT_TRUE(book.get_orders_sells().empty());
+        EXPECT_TRUE(book.bid_depth(2).empty());
+        EXPECT_TRUE(book.ask_depths(2).empty());
+    }
+
+    TEST(OrderBookTest, DepthRejectsZeroLevels) {
+        OrderBook book("AAPL");
+
+        EXPECT_THROW(
+            {
+                const auto depth = book.bid_depth(0);
+                static_cast<void>(depth);
+            },
+            std::runtime_error
+        );
+        EXPECT_THROW(
+            {
+                const auto depth = book.ask_depths(0);
+                static_cast<void>(depth);
+            },
+            std::runtime_error
+        );
+    }
+
+    TEST(OrderBookTest, MarketBuyConsumesBestAsksAndDoesNotRestRemainder) {
+        OrderBook book("AAPL");
+        book.addOrder(makeOrder("sell-1", Side::SELL, 100.0, 2));
+        book.addOrder(makeOrder("sell-2", Side::SELL, 101.0, 3));
+
+        const auto trades = book.addOrder(makeOrder("buy-market", Side::BUY, 0.0, 4, 2, OrderType::MARKET));
+
+        ASSERT_EQ(trades.size(), 2);
+        EXPECT_EQ(trades[0]._sell_order_id, "sell-1");
+        EXPECT_EQ(trades[0]._quantity, 2);
+        EXPECT_DOUBLE_EQ(trades[0]._price, 100.0);
+        EXPECT_EQ(trades[1]._sell_order_id, "sell-2");
+        EXPECT_EQ(trades[1]._quantity, 2);
+        EXPECT_DOUBLE_EQ(trades[1]._price, 101.0);
+
+        const auto best_ask = book.bestAsk();
+        ASSERT_TRUE(best_ask.has_value());
+        EXPECT_EQ(best_ask->_id, "sell-2");
+        EXPECT_EQ(best_ask->_quantity, 1);
+        EXPECT_FALSE(book.bestBid().has_value());
+    }
+
+    TEST(OrderBookTest, MarketSellConsumesBestBidsAndDoesNotRestRemainder) {
+        OrderBook book("AAPL");
+        book.addOrder(makeOrder("buy-1", Side::BUY, 101.0, 2));
+        book.addOrder(makeOrder("buy-2", Side::BUY, 100.0, 3));
+
+        const auto trades = book.addOrder(makeOrder("sell-market", Side::SELL, 0.0, 5, 2, OrderType::MARKET));
+
+        ASSERT_EQ(trades.size(), 2);
+        EXPECT_EQ(trades[0]._buy_order_id, "buy-1");
+        EXPECT_EQ(trades[0]._quantity, 2);
+        EXPECT_DOUBLE_EQ(trades[0]._price, 101.0);
+        EXPECT_EQ(trades[1]._buy_order_id, "buy-2");
+        EXPECT_EQ(trades[1]._quantity, 3);
+        EXPECT_DOUBLE_EQ(trades[1]._price, 100.0);
+        EXPECT_FALSE(book.bestBid().has_value());
+        EXPECT_FALSE(book.bestAsk().has_value());
+    }
+
+    TEST(OrderBookTest, MarketOrderAgainstEmptyBookReturnsNoTradesAndDoesNotRest) {
+        OrderBook book("AAPL");
+
+        const auto trades = book.addOrder(makeOrder("buy-market", Side::BUY, 0.0, 10, 1, OrderType::MARKET));
+
+        EXPECT_TRUE(trades.empty());
+        EXPECT_TRUE(book.get_orders_buys().empty());
+        EXPECT_TRUE(book.get_orders_sells().empty());
+    }
 } // namespace

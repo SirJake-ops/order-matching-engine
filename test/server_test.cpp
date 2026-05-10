@@ -14,6 +14,13 @@ namespace {
     using server::MarketDataStore;
     using server::Server;
 
+    boost::beast::flat_buffer makeBuffer(const std::string &message) {
+        boost::beast::flat_buffer buffer;
+        boost::asio::buffer_copy(buffer.prepare(message.size()), boost::asio::buffer(message));
+        buffer.commit(message.size());
+        return buffer;
+    }
+
     TEST(ServerHelperTest, HandleRequestReturnsPriceSnapshotForKnownSymbol) {
         auto store = std::make_shared<MarketDataStore>();
         const market::MarkPrice price("BTC/USD", 62500.10, 62500.50, 62500.20, 4200);
@@ -42,34 +49,54 @@ namespace {
         EXPECT_EQ(response.body(), R"({"error":"symbol_not_found"})");
     }
 
+    TEST(ServerHelperTest, HandleRequestRejectsUnsupportedMethodAndUnknownRoute) {
+        auto store = std::make_shared<MarketDataStore>();
+        Server server(store);
+
+        Server::Request post_request{boost::beast::http::verb::post, "/api/market/prices/AAPL", 11};
+        const auto post_response = server.handleRequest(post_request);
+        EXPECT_EQ(post_response.result(), boost::beast::http::status::method_not_allowed);
+        EXPECT_EQ(post_response.body(), R"({"error":"method_not_allowed"})");
+
+        Server::Request unknown_route{boost::beast::http::verb::get, "/api/market/unknown", 11};
+        const auto unknown_response = server.handleRequest(unknown_route);
+        EXPECT_EQ(unknown_response.result(), boost::beast::http::status::not_found);
+        EXPECT_EQ(unknown_response.body(), R"({"error":"not_found"})");
+    }
+
     TEST(ServerHelperTest, ParseWebSocketMessageRecognizesPingAndSubscriptionCommands) {
         Server server(std::make_shared<MarketDataStore>());
 
-        boost::beast::flat_buffer ping_buffer;
-        const std::string ping = "ping";
-        boost::asio::buffer_copy(ping_buffer.prepare(ping.size()), boost::asio::buffer(ping));
-        ping_buffer.commit(ping.size());
-
+        auto ping_buffer = makeBuffer("ping");
         const auto ping_message = server.parseWebSocketMessage(ping_buffer);
         EXPECT_EQ(ping_message.type, Server::WebSocketMessageType::Ping);
         EXPECT_TRUE(ping_message.symbol.empty());
 
-        boost::beast::flat_buffer subscribe_buffer;
-        const std::string subscribe = "subscribe:ETH/USD";
-        boost::asio::buffer_copy(subscribe_buffer.prepare(subscribe.size()), boost::asio::buffer(subscribe));
-        subscribe_buffer.commit(subscribe.size());
-
+        auto subscribe_buffer = makeBuffer("subscribe:ETH/USD");
         const auto subscribe_message = server.parseWebSocketMessage(subscribe_buffer);
         EXPECT_EQ(subscribe_message.type, Server::WebSocketMessageType::Subscribe);
         EXPECT_EQ(subscribe_message.symbol, "ETH/USD");
 
-        boost::beast::flat_buffer unknown_buffer;
-        const std::string unknown = "hello";
-        boost::asio::buffer_copy(unknown_buffer.prepare(unknown.size()), boost::asio::buffer(unknown));
-        unknown_buffer.commit(unknown.size());
+        auto unsubscribe_buffer = makeBuffer("unsubscribe:ETH/USD");
+        const auto unsubscribe_message = server.parseWebSocketMessage(unsubscribe_buffer);
+        EXPECT_EQ(unsubscribe_message.type, Server::WebSocketMessageType::Unsubscribe);
+        EXPECT_EQ(unsubscribe_message.symbol, "ETH/USD");
 
+        auto unknown_buffer = makeBuffer("hello");
         const auto unknown_message = server.parseWebSocketMessage(unknown_buffer);
         EXPECT_EQ(unknown_message.type, Server::WebSocketMessageType::Unknown);
+    }
+
+    TEST(ServerHelperTest, DetectsWebSocketUpgradeRequests) {
+        Server::Request normal_request{boost::beast::http::verb::get, "/api/market/prices/AAPL", 11};
+        EXPECT_FALSE(Server::isWebSocketUpgrade(normal_request));
+
+        Server::Request upgrade_request{boost::beast::http::verb::get, "/ws", 11};
+        upgrade_request.set(boost::beast::http::field::connection, "upgrade");
+        upgrade_request.set(boost::beast::http::field::upgrade, "websocket");
+        upgrade_request.set(boost::beast::http::field::sec_websocket_version, "13");
+        upgrade_request.set(boost::beast::http::field::sec_websocket_key, "dGhlIHNhbXBsZSBub25jZQ==");
+        EXPECT_TRUE(Server::isWebSocketUpgrade(upgrade_request));
     }
 
     TEST(ServerHelperTest, BuildPriceUpdateMessageUsesCurrentWebSocketEnvelope) {
@@ -100,6 +127,28 @@ namespace {
         EXPECT_EQ(server._sessions.size(), 1);
 
         server.unregisterSession(session);
+        EXPECT_TRUE(server._sessions.empty());
+    }
+
+    TEST(ServerHelperTest, BroadcastWithNoSessionsDoesNothing) {
+        Server server(std::make_shared<MarketDataStore>());
+        const market::MarkPrice price("AAPL", 189.45, 189.50, 189.47, 900);
+
+        EXPECT_NO_THROW(server.broadcastPriceUpdate(price));
+        EXPECT_TRUE(server._sessions.empty());
+    }
+
+    TEST(ServerHelperTest, BroadcastRemovesSessionWhenWriteFails) {
+        boost::asio::io_context io_context;
+        Server server(std::make_shared<MarketDataStore>());
+        auto session = std::make_shared<boost::beast::websocket::stream<Server::tcp::socket> >(io_context);
+        const market::MarkPrice price("AAPL", 189.45, 189.50, 189.47, 900);
+
+        server.registerSession(session);
+        ASSERT_EQ(server._sessions.size(), 1);
+
+        server.broadcastPriceUpdate(price);
+
         EXPECT_TRUE(server._sessions.empty());
     }
 }

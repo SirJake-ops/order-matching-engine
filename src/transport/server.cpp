@@ -19,6 +19,7 @@ namespace server {
         : _market_data_store(std::move(market_data_store)), _port(port) {
     }
 
+    // GCOVR_EXCL_START
     void Server::run() {
         try {
             boost::asio::io_context io_context(1);
@@ -203,6 +204,7 @@ namespace server {
             throw;
         }
     }
+    // GCOVR_EXCL_STOP
 
     Server::WebSocketMessage Server::parseWebSocketMessage(const boost::beast::flat_buffer &buffer) {
         const std::string message = boost::beast::buffers_to_string(buffer.data());

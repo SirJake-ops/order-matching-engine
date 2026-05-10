@@ -141,10 +141,26 @@ bool orderbook::OrderBook::cancel_order(const std::string &order_id) {
     return removed;
 }
 
-std::vector<orderbook::Order> orderbook::OrderBook::get_orders() const {
+std::vector<orderbook::Order> orderbook::OrderBook::get_orders_buys() const {
     std::vector<Order> orders;
-    std::ranges::copy(_buy_orders, std::back_inserter(orders));
-    std::ranges::copy(_sell_orders, std::back_inserter(orders));
+
+    orders.reserve(_order_index.size());
+
+    for (const auto &[order_id, trades] : _buy_orders) {
+        orders.push_back(trades.front());
+    }
+
+    return orders;
+}
+
+std::vector<orderbook::Order> orderbook::OrderBook::get_orders_sells() const {
+    std::vector<Order> orders;
+
+    orders.reserve(_order_index.size());
+
+    for (const auto &[order_id, trades] : _sell_orders) {
+        orders.push_back(trades.front());
+    }
     return orders;
 }
 

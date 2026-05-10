@@ -49,7 +49,8 @@ class OrderBook {
     ~OrderBook() = default;
 
     std::vector<Trade> addOrder(const Order &order);
-    std::vector<orderbook::Order> get_orders() const;
+    std::vector<orderbook::Order> get_orders_buys() const;
+    std::vector<orderbook::Order> get_orders_sells() const;
 
     bool cancel_order(const std::string &order_id);
 

@@ -9,6 +9,8 @@ enable_testing()
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
 
+find_program(GCOVR_EXECUTABLE gcovr)
+
 find_package(Boost REQUIRED)
 
 set(PROJECT_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -46,3 +48,29 @@ target_link_libraries(market_data_service PRIVATE simulation orderbook
                                                   transport)
 
 add_subdirectory(test)
+
+if (GCOVR_EXECUTABLE)
+    add_custom_target(coverage
+            COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+            COMMAND ${GCOVR_EXECUTABLE}
+                    --root ${CMAKE_SOURCE_DIR}
+                    --object-directory ${CMAKE_BINARY_DIR}
+                    --filter ${CMAKE_SOURCE_DIR}/src
+                    --exclude ${CMAKE_SOURCE_DIR}/test/.*
+                    --exclude ${CMAKE_BINARY_DIR}/.*
+                    --exclude ${CMAKE_SOURCE_DIR}/CMakeFiles/.*
+                    --exclude ${CMAKE_SOURCE_DIR}/_deps/.*
+                    --exclude-directories ${CMAKE_SOURCE_DIR}/CMakeFiles
+                    --exclude-directories ${CMAKE_SOURCE_DIR}/_deps
+                    --html --html-details
+                    --output ${CMAKE_BINARY_DIR}/coverage.html
+                    ${CMAKE_BINARY_DIR}
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            COMMENT "Running tests and generating filtered coverage report"
+            VERBATIM)
+else ()
+    add_custom_target(coverage
+            COMMAND ${CMAKE_COMMAND} -E echo "gcovr was not found. Install gcovr to generate filtered coverage reports."
+            COMMAND ${CMAKE_COMMAND} -E false
+            VERBATIM)
+endif ()

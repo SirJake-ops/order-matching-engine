@@ -11,6 +11,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace orderbook {
@@ -30,7 +31,7 @@ struct Order {
     Side _side;
     OrderType _type;
     double _price;
-    int _quantity;
+    uint32_t _quantity;
     std::uint64_t _timestamp;
 };
 
@@ -39,18 +40,18 @@ struct Trade {
     std::string _sell_order_id;
     std::string _symbol;
     double _price;
-    int _quantity;
+    uint32_t _quantity;
     std::uint64_t _timestamp;
 };
 
 class OrderBook {
   public:
-    OrderBook() = default;
+    explicit OrderBook(std::string symbol) : _symbol(std::move(symbol)) {}
     ~OrderBook() = default;
 
     std::vector<Trade> addOrder(const Order &order);
-    std::vector<orderbook::Order> get_orders_buys() const;
-    std::vector<orderbook::Order> get_orders_sells() const;
+    std::vector<Order> get_orders_buys() const;
+    std::vector<Order> get_orders_sells() const;
 
     bool cancel_order(const std::string &order_id);
 
@@ -63,6 +64,7 @@ class OrderBook {
     ask_depths(std::size_t levels) const;
 
   private:
+    std::string _symbol;
     std::map<double, std::deque<Order>, std::greater<>> _buy_orders;
     std::map<double, std::deque<Order>, std::less<>> _sell_orders;
     std::unordered_map<std::uint64_t, std::vector<Trade>> _order_index;

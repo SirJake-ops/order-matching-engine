@@ -6,7 +6,9 @@
 #define TRADINGEXCHANGE_SERVER_H
 
 #include <memory>
+#include <mutex>
 #include <string>
+#include <vector>
 
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
@@ -66,6 +68,7 @@ namespace server {
         std::shared_ptr<MarketDataStore> _market_data_store;
 
         mutable std::mutex _sessions_mutex;
+        mutable std::mutex _web_socket_write_mutex;
         std::vector<WebsocketSession> _sessions;
         unsigned short _port;
     };

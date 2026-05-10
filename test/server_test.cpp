@@ -77,7 +77,13 @@ namespace {
 
         const auto message = Server::buildPriceUpdateMessage(price);
 
-        EXPECT_EQ(message, "{\"type\":\"price_update\",\"price\":189.450000}");
+        EXPECT_NE(message.find(R"("type":"price_update")"), std::string::npos);
+        EXPECT_NE(message.find(R"("symbol":"AAPL")"), std::string::npos);
+        EXPECT_NE(message.find(R"("bid":189.45)"), std::string::npos);
+        EXPECT_NE(message.find(R"("ask":189.50)"), std::string::npos);
+        EXPECT_NE(message.find(R"("last":189.47)"), std::string::npos);
+        EXPECT_NE(message.find(R"("volume":900)"), std::string::npos);
+        EXPECT_NE(message.find(R"("timestamp":)"), std::string::npos);
     }
 
     TEST(ServerHelperTest, UrlHelpersDecodeEncodedSymbolsAndEscapeJsonQuotes) {
@@ -88,7 +94,7 @@ namespace {
     TEST(ServerHelperTest, RegisterAndUnregisterSessionManageSessionCollection) {
         boost::asio::io_context io_context;
         Server server(std::make_shared<MarketDataStore>());
-        auto session = std::make_shared<boost::beast::websocket::stream<Server::tcp::socket>>(io_context);
+        auto session = std::make_shared<boost::beast::websocket::stream<Server::tcp::socket> >(io_context);
 
         server.registerSession(session);
         EXPECT_EQ(server._sessions.size(), 1);

@@ -9,11 +9,15 @@
 #include <vector>
 
 std::vector<orderbook::Trade> orderbook::OrderBook::addOrder(const Order &order) {
+    if (order._id.empty() || order._symbol.empty()) {
+        throw std::runtime_error("Invalid order");
+    }
+
     if (order._symbol != _symbol) {
         throw std::runtime_error("Order symbol does not match order book symbol");
     }
 
-    if (order._quantity == 0 || order._price <= 0) {
+    if (order._quantity <= 0 || order._price <= 0) {
         throw std::runtime_error("Invalid order");
     }
 
@@ -207,8 +211,8 @@ orderbook::OrderBook::ask_depths(const std::size_t levels) const {
         throw std::runtime_error("levels must be greater than 0");
     }
 
-    std::vector<std::pair<double, std::uint32_t> > bids;
-    bids.reserve(levels);
+    std::vector<std::pair<double, std::uint32_t> > asks;
+    asks.reserve(levels);
 
     for (const auto &[price, orders]: _sell_orders) {
         std::uint32_t total_quantity = 0;
@@ -216,10 +220,10 @@ orderbook::OrderBook::ask_depths(const std::size_t levels) const {
             total_quantity += order._quantity;
         });
 
-        bids.emplace_back(price, total_quantity);
-        if (bids.size() == levels)
+        asks.emplace_back(price, total_quantity);
+        if (asks.size() == levels)
             break;
     }
 
-    return bids;
+    return asks;
 }

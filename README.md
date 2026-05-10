@@ -25,7 +25,7 @@
 Requirements:
 
 - CMake 3.28+
-- A C++20 compiler
+- A C++23 compiler
 - Boost
 
 Example build:

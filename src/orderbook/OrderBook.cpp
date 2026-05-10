@@ -92,7 +92,7 @@ std::vector<orderbook::Trade> orderbook::OrderBook::addOrder(const Order &order)
 
             auto &resting_orders = best_bid_level->second;
             auto &resting_order = resting_orders.front();
-            const std::uint32_t matched_quantity =
+            const std::int64_t matched_quantity =
                     std::min(incoming_order._quantity, resting_order._quantity);
 
             trades.push_back(Trade{
@@ -208,13 +208,13 @@ std::vector<orderbook::Order> orderbook::OrderBook::get_orders_sells() const {
     return orders;
 }
 
-std::vector<std::pair<double, std::uint32_t> >
+std::vector<std::pair<double, int64_t>>
 orderbook::OrderBook::bid_depth(const std::size_t levels) const {
     if (levels == 0) {
         throw std::runtime_error("levels must be greater than 0");
     }
 
-    std::vector<std::pair<double, std::uint32_t> > bids;
+    std::vector<std::pair<double, std::int64_t> > bids;
     bids.reserve(levels);
 
     for (const auto &[price, orders]: _buy_orders) {
@@ -231,17 +231,17 @@ orderbook::OrderBook::bid_depth(const std::size_t levels) const {
     return bids;
 }
 
-std::vector<std::pair<double, std::uint32_t> >
+std::vector<std::pair<double, std::int64_t> >
 orderbook::OrderBook::ask_depths(const std::size_t levels) const {
     if (levels == 0) {
         throw std::runtime_error("levels must be greater than 0");
     }
 
-    std::vector<std::pair<double, std::uint32_t> > asks;
+    std::vector<std::pair<double, std::int64_t> > asks;
     asks.reserve(levels);
 
     for (const auto &[price, orders]: _sell_orders) {
-        std::uint32_t total_quantity = 0;
+        std::int64_t total_quantity = 0;
         std::ranges::for_each(orders, [&](const auto &order) {
             total_quantity += order._quantity;
         });

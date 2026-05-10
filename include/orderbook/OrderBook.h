@@ -59,8 +59,8 @@ class OrderBook {
 
     [[nodiscard]] std::optional<Order> bestAsk() const;
 
-    [[nodiscard]] std::vector<std::pair<double, std::uint32_t>> bid_depth(std::size_t levels) const;
-    [[nodiscard]] std::vector<std::pair<double, std::uint32_t>>
+    [[nodiscard]] std::vector<std::pair<double, int64_t>> bid_depth(std::size_t levels) const;
+    [[nodiscard]] std::vector<std::pair<double, std::int64_t>>
     ask_depths(std::size_t levels) const;
 
   private:

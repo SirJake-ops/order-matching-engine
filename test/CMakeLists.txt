@@ -14,6 +14,7 @@ add_executable(
         test_main.cpp
         market_data_store_test.cpp
         market_simulator_test.cpp
+        order_book_test.cpp
         server_test.cpp
 )
 

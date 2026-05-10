@@ -23,7 +23,9 @@ target_include_directories(simulation PUBLIC ${PROJECT_INCLUDE_DIR})
 
 target_link_libraries(simulation PUBLIC pricing events)
 
-add_library(orderbook src/orderbook/OrderBookSimulator.cpp)
+add_library(orderbook
+        src/orderbook/OrderBook.cpp
+        src/orderbook/OrderBookSimulator.cpp)
 
 target_include_directories(orderbook PUBLIC ${PROJECT_INCLUDE_DIR})
 

@@ -8,7 +8,7 @@
 #include <ranges>
 #include <vector>
 
-std::vector<orderbook::Trade> orderbook::OrderBook::addOrder(const orderbook::Order &order) {
+std::vector<orderbook::Trade> orderbook::OrderBook::addOrder(const Order &order) {
     Order incoming_order = order;
 
     auto duplicate_exists = [&](const auto &book_side) {
@@ -146,8 +146,9 @@ std::vector<orderbook::Order> orderbook::OrderBook::get_orders_buys() const {
 
     orders.reserve(_order_index.size());
 
-    for (const auto &[order_id, trades] : _buy_orders) {
-        orders.push_back(trades.front());
+    for (const auto &trades: _buy_orders | std::views::values) {
+        std::ranges::for_each(trades,
+                              [&](const auto &order) { orders.push_back(order); });
     }
 
     return orders;
@@ -158,8 +159,9 @@ std::vector<orderbook::Order> orderbook::OrderBook::get_orders_sells() const {
 
     orders.reserve(_order_index.size());
 
-    for (const auto &[order_id, trades] : _sell_orders) {
-        orders.push_back(trades.front());
+    for (const auto &trades: _sell_orders | std::views::values) {
+        std::ranges::for_each(trades,
+                              [&](const auto &order) { orders.push_back(order); });
     }
     return orders;
 }

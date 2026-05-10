@@ -31,7 +31,7 @@ struct Order {
     Side _side;
     OrderType _type;
     double _price;
-    uint32_t _quantity;
+    std::int64_t _quantity;
     std::uint64_t _timestamp;
 };
 
@@ -40,7 +40,7 @@ struct Trade {
     std::string _sell_order_id;
     std::string _symbol;
     double _price;
-    uint32_t _quantity;
+    std::int64_t _quantity;
     std::uint64_t _timestamp;
 };
 
@@ -67,7 +67,7 @@ class OrderBook {
     std::string _symbol;
     std::map<double, std::deque<Order>, std::greater<>> _buy_orders;
     std::map<double, std::deque<Order>, std::less<>> _sell_orders;
-    std::unordered_map<std::uint64_t, std::vector<Trade>> _order_index;
+    std::unordered_map<std::string, std::vector<Trade>> _trade_history;
 };
 } // namespace orderbook
 

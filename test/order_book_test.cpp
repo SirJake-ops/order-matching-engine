@@ -12,7 +12,7 @@ namespace {
     using orderbook::OrderType;
     using orderbook::Side;
 
-    Order makeOrder(const std::string &id, const Side side, const double price, const uint32_t quantity,
+    Order makeOrder(const std::string &id, const Side side, const double price, const std::int64_t quantity,
                     const std::uint64_t timestamp = 1, const OrderType type = OrderType::LIMIT,
                     const std::string &symbol = "AAPL") {
         return Order{id, symbol, side, type, price, quantity, timestamp};
@@ -217,5 +217,19 @@ namespace {
         ASSERT_EQ(result_asks.size(), 1);
         EXPECT_EQ(result_asks[0].first, 90.0);
         EXPECT_EQ(result_asks[0].second, 5);
+    }
+
+    TEST(OrderBookTest, RejectsPriceQuantityNegativeValues) {
+        OrderBook book("AAPL");
+
+        EXPECT_THROW(
+            book.addOrder(makeOrder("sell-1", Side::SELL, -90.0, 2, 1)),
+            std::runtime_error
+        );
+
+        EXPECT_THROW(
+            book.addOrder(makeOrder("buy-1", Side::BUY, 100.0, -2, 1)),
+            std::runtime_error
+        );
     }
 } // namespace

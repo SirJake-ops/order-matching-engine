@@ -51,7 +51,7 @@ std::vector<orderbook::Trade> orderbook::OrderBook::addOrder(const Order &order)
 
             auto &resting_orders = best_ask_level->second;
             auto &resting_order = resting_orders.front();
-            const int matched_quantity =
+            const std::uint32_t matched_quantity =
                     std::min(incoming_order._quantity, resting_order._quantity);
 
             trades.push_back(Trade{
@@ -73,6 +73,14 @@ std::vector<orderbook::Trade> orderbook::OrderBook::addOrder(const Order &order)
 
         if (incoming_order._quantity > 0 && incoming_order._type == OrderType::LIMIT) {
             _buy_orders[incoming_order._price].push_back(incoming_order);
+
+            const Trade trade{
+                incoming_order._id, incoming_order._id, incoming_order._symbol,
+                incoming_order._price, incoming_order._quantity,
+                incoming_order._timestamp
+            };
+
+            _trade_history[incoming_order._id].push_back(trade);
         }
     } else {
         while (incoming_order._quantity > 0 && !_buy_orders.empty()) {
@@ -84,7 +92,7 @@ std::vector<orderbook::Trade> orderbook::OrderBook::addOrder(const Order &order)
 
             auto &resting_orders = best_bid_level->second;
             auto &resting_order = resting_orders.front();
-            const int matched_quantity =
+            const std::uint32_t matched_quantity =
                     std::min(incoming_order._quantity, resting_order._quantity);
 
             trades.push_back(Trade{
@@ -106,6 +114,14 @@ std::vector<orderbook::Trade> orderbook::OrderBook::addOrder(const Order &order)
 
         if (incoming_order._quantity > 0 && incoming_order._type == OrderType::LIMIT) {
             _sell_orders[incoming_order._price].push_back(incoming_order);
+
+            const Trade trade{
+                incoming_order._id, incoming_order._id, incoming_order._symbol,
+                incoming_order._price, incoming_order._quantity,
+                incoming_order._timestamp
+            };
+
+            _trade_history[incoming_order._id].push_back(trade);
         }
     }
 
@@ -160,7 +176,12 @@ bool orderbook::OrderBook::cancel_order(const std::string &order_id) {
 std::vector<orderbook::Order> orderbook::OrderBook::get_orders_buys() const {
     std::vector<Order> orders;
 
-    orders.reserve(_order_index.size());
+    std::size_t total_orders = 0;
+    for (const auto &orders_for_price: _buy_orders | std::views::values) {
+        total_orders += orders_for_price.size();
+    }
+
+    orders.reserve(total_orders);
 
     for (const auto &trades: _buy_orders | std::views::values) {
         std::ranges::for_each(trades,
@@ -173,7 +194,12 @@ std::vector<orderbook::Order> orderbook::OrderBook::get_orders_buys() const {
 std::vector<orderbook::Order> orderbook::OrderBook::get_orders_sells() const {
     std::vector<Order> orders;
 
-    orders.reserve(_order_index.size());
+    std::size_t total_orders = 0;
+    for (const auto &orders_for_price: _sell_orders | std::views::values) {
+        total_orders += orders_for_price.size();
+    }
+
+    orders.reserve(total_orders);
 
     for (const auto &trades: _sell_orders | std::views::values) {
         std::ranges::for_each(trades,

@@ -31,8 +31,8 @@ Requirements:
 Example build:
 
 ```bash
-cmake -S . -B cmake-build-debug
-cmake --build cmake-build-debug
+cmake --preset debug
+cmake --build --preset debug
 ```
 
 ## Run
@@ -40,5 +40,14 @@ cmake --build cmake-build-debug
 Build the project, then run:
 
 ```bash
-./cmake-build-debug/market_data_service
+./build/debug/market_data_service
 ```
+
+## Run for CLion
+
+Open the repository root, not an existing build directory. CLion should detect
+`CMakePresets.json` and offer the `debug` and `release` profiles automatically.
+
+If CLion still shows old targets or old run configurations, remove the project
+from the recent list, delete `.idea/`, and reopen the repo so CLion rebuilds
+its workspace from the current CMake project instead of stale metadata.

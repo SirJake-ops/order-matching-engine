@@ -8,11 +8,19 @@
 #include <ranges>
 #include <vector>
 
-std::vector<orderbook::Trade> orderbook::OrderBook::addOrder(const orderbook::Order &order) {
+std::vector<orderbook::Trade> orderbook::OrderBook::addOrder(const Order &order) {
+    if (order._symbol != _symbol) {
+        throw std::runtime_error("Order symbol does not match order book symbol");
+    }
+
+    if (order._quantity == 0 || order._price <= 0) {
+        throw std::runtime_error("Invalid order");
+    }
+
     Order incoming_order = order;
 
     auto duplicate_exists = [&](const auto &book_side) {
-        for (const auto &orders : book_side | std::views::values) {
+        for (const auto &orders: book_side | std::views::values) {
             const auto it = std::ranges::find_if(orders, [&](const Order &existing_order) {
                 return existing_order._id == incoming_order._id;
             });
@@ -40,11 +48,13 @@ std::vector<orderbook::Trade> orderbook::OrderBook::addOrder(const orderbook::Or
             auto &resting_orders = best_ask_level->second;
             auto &resting_order = resting_orders.front();
             const int matched_quantity =
-                std::min(incoming_order._quantity, resting_order._quantity);
+                    std::min(incoming_order._quantity, resting_order._quantity);
 
-            trades.push_back(Trade{incoming_order._id, resting_order._id, incoming_order._symbol,
-                                   resting_order._price, matched_quantity,
-                                   incoming_order._timestamp});
+            trades.push_back(Trade{
+                incoming_order._id, resting_order._id, incoming_order._symbol,
+                resting_order._price, matched_quantity,
+                incoming_order._timestamp
+            });
 
             incoming_order._quantity -= matched_quantity;
             resting_order._quantity -= matched_quantity;
@@ -71,11 +81,13 @@ std::vector<orderbook::Trade> orderbook::OrderBook::addOrder(const orderbook::Or
             auto &resting_orders = best_bid_level->second;
             auto &resting_order = resting_orders.front();
             const int matched_quantity =
-                std::min(incoming_order._quantity, resting_order._quantity);
+                    std::min(incoming_order._quantity, resting_order._quantity);
 
-            trades.push_back(Trade{resting_order._id, incoming_order._id, incoming_order._symbol,
-                                   resting_order._price, matched_quantity,
-                                   incoming_order._timestamp});
+            trades.push_back(Trade{
+                resting_order._id, incoming_order._id, incoming_order._symbol,
+                resting_order._price, matched_quantity,
+                incoming_order._timestamp
+            });
 
             incoming_order._quantity -= matched_quantity;
             resting_order._quantity -= matched_quantity;
@@ -121,7 +133,7 @@ std::optional<orderbook::Order> orderbook::OrderBook::bestAsk() const {
     return orders_best_price.front();
 }
 
-bool orderbook::OrderBook::cancelOrder(const std::string &order_id) {
+bool orderbook::OrderBook::cancel_order(const std::string &order_id) {
     bool removed = false;
     auto remove_order = [&]<typename T>(T &book) {
         using BookT = std::decay_t<T>;
@@ -139,4 +151,75 @@ bool orderbook::OrderBook::cancelOrder(const std::string &order_id) {
     remove_order(_sell_orders);
 
     return removed;
+}
+
+std::vector<orderbook::Order> orderbook::OrderBook::get_orders_buys() const {
+    std::vector<Order> orders;
+
+    orders.reserve(_order_index.size());
+
+    for (const auto &trades: _buy_orders | std::views::values) {
+        std::ranges::for_each(trades,
+                              [&](const auto &order) { orders.push_back(order); });
+    }
+
+    return orders;
+}
+
+std::vector<orderbook::Order> orderbook::OrderBook::get_orders_sells() const {
+    std::vector<Order> orders;
+
+    orders.reserve(_order_index.size());
+
+    for (const auto &trades: _sell_orders | std::views::values) {
+        std::ranges::for_each(trades,
+                              [&](const auto &order) { orders.push_back(order); });
+    }
+    return orders;
+}
+
+std::vector<std::pair<double, std::uint32_t> >
+orderbook::OrderBook::bid_depth(const std::size_t levels) const {
+    if (levels == 0) {
+        throw std::runtime_error("levels must be greater than 0");
+    }
+
+    std::vector<std::pair<double, std::uint32_t> > bids;
+    bids.reserve(levels);
+
+    for (const auto &[price, orders]: _buy_orders) {
+        std::uint32_t total_quantity = 0;
+        std::ranges::for_each(orders, [&](const auto &order) {
+            total_quantity += order._quantity;
+        });
+
+        bids.emplace_back(price, total_quantity);
+        if (bids.size() == levels)
+            break;
+    }
+
+    return bids;
+}
+
+std::vector<std::pair<double, std::uint32_t> >
+orderbook::OrderBook::ask_depths(const std::size_t levels) const {
+    if (levels == 0) {
+        throw std::runtime_error("levels must be greater than 0");
+    }
+
+    std::vector<std::pair<double, std::uint32_t> > bids;
+    bids.reserve(levels);
+
+    for (const auto &[price, orders]: _sell_orders) {
+        std::uint32_t total_quantity = 0;
+        std::ranges::for_each(orders, [&](const auto &order) {
+            total_quantity += order._quantity;
+        });
+
+        bids.emplace_back(price, total_quantity);
+        if (bids.size() == levels)
+            break;
+    }
+
+    return bids;
 }

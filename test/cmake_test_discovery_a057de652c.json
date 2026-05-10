@@ -1,0 +1,115 @@
+{
+  "tests": 17,
+  "name": "AllTests",
+  "testsuites": [
+    {
+      "name": "MarketDataStoreTest",
+      "tests": 2,
+      "testsuite": [
+        {
+          "name": "UpdatePriceStoresAndReplacesSymbolSnapshot",
+          "file": "\/home\/jake\/cpp-projects\/fluffy-parakeet\/test\/market_data_store_test.cpp",
+          "line": 6
+        },
+        {
+          "name": "UnknownSymbolReturnsEmptyOptional",
+          "file": "\/home\/jake\/cpp-projects\/fluffy-parakeet\/test\/market_data_store_test.cpp",
+          "line": 22
+        }
+      ]
+    },
+    {
+      "name": "MarketSimulatorTest",
+      "tests": 1,
+      "testsuite": [
+        {
+          "name": "UpdatePublishesOneEventPerSymbolAndReturnsPrices",
+          "file": "\/home\/jake\/cpp-projects\/fluffy-parakeet\/test\/market_simulator_test.cpp",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "name": "OrderBookTest",
+      "tests": 8,
+      "testsuite": [
+        {
+          "name": "BuyCrossesSingleAskCompletely",
+          "file": "\/home\/jake\/cpp-projects\/fluffy-parakeet\/test\/order_book_test.cpp",
+          "line": 27
+        },
+        {
+          "name": "BuyPartiallyFillsAskAndLeavesRemainder",
+          "file": "\/home\/jake\/cpp-projects\/fluffy-parakeet\/test\/order_book_test.cpp",
+          "line": 42
+        },
+        {
+          "name": "SellCrossesMultipleBidLevels",
+          "file": "\/home\/jake\/cpp-projects\/fluffy-parakeet\/test\/order_book_test.cpp",
+          "line": 57
+        },
+        {
+          "name": "TwoOrdersAtSamePriceFillInFifoOrder",
+          "file": "\/home\/jake\/cpp-projects\/fluffy-parakeet\/test\/order_book_test.cpp",
+          "line": 78
+        },
+        {
+          "name": "CancelRemovesCorrectRestingOrder",
+          "file": "\/home\/jake\/cpp-projects\/fluffy-parakeet\/test\/order_book_test.cpp",
+          "line": 97
+        },
+        {
+          "name": "NonCrossingOrderEntersBookCorrectly",
+          "file": "\/home\/jake\/cpp-projects\/fluffy-parakeet\/test\/order_book_test.cpp",
+          "line": 110
+        },
+        {
+          "name": "BestBidAndBestAskUpdateCorrectly",
+          "file": "\/home\/jake\/cpp-projects\/fluffy-parakeet\/test\/order_book_test.cpp",
+          "line": 127
+        },
+        {
+          "name": "DuplicateOrderIdThrows",
+          "file": "\/home\/jake\/cpp-projects\/fluffy-parakeet\/test\/order_book_test.cpp",
+          "line": 148
+        }
+      ]
+    },
+    {
+      "name": "ServerHelperTest",
+      "tests": 6,
+      "testsuite": [
+        {
+          "name": "HandleRequestReturnsPriceSnapshotForKnownSymbol",
+          "file": "\/home\/jake\/cpp-projects\/fluffy-parakeet\/test\/server_test.cpp",
+          "line": 17
+        },
+        {
+          "name": "HandleRequestReturnsNotFoundForUnknownSymbol",
+          "file": "\/home\/jake\/cpp-projects\/fluffy-parakeet\/test\/server_test.cpp",
+          "line": 34
+        },
+        {
+          "name": "ParseWebSocketMessageRecognizesPingAndSubscriptionCommands",
+          "file": "\/home\/jake\/cpp-projects\/fluffy-parakeet\/test\/server_test.cpp",
+          "line": 45
+        },
+        {
+          "name": "BuildPriceUpdateMessageUsesCurrentWebSocketEnvelope",
+          "file": "\/home\/jake\/cpp-projects\/fluffy-parakeet\/test\/server_test.cpp",
+          "line": 75
+        },
+        {
+          "name": "UrlHelpersDecodeEncodedSymbolsAndEscapeJsonQuotes",
+          "file": "\/home\/jake\/cpp-projects\/fluffy-parakeet\/test\/server_test.cpp",
+          "line": 83
+        },
+        {
+          "name": "RegisterAndUnregisterSessionManageSessionCollection",
+          "file": "\/home\/jake\/cpp-projects\/fluffy-parakeet\/test\/server_test.cpp",
+          "line": 88
+        }
+      ]
+    }
+  ]
+}

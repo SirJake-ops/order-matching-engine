@@ -248,10 +248,22 @@ void Server::handleWebSocketSession(const std::shared_ptr<ClientSession> &client
             switch (parsed_message.type) {
             case WebSocketMessageType::Subscribe: {
                 subscribe_to_symbol(client_session, parsed_message.symbol);
+                {
+                    std::lock_guard write_lock(_web_socket_write_mutex);
+                    websocket_session.write(
+                        boost::asio::buffer(std::string(R"({"type":"subscribed","symbol":")")
+                                            + escapeJson(parsed_message.symbol) + R"("})"));
+                }
                 continue;
             }
             case WebSocketMessageType::Unsubscribe: {
                 unsubscribe_from_symbol(client_session, parsed_message.symbol);
+                {
+                    std::lock_guard write_lock(_web_socket_write_mutex);
+                    websocket_session.write(
+                        boost::asio::buffer(std::string(R"({"type":"unsubscribed","symbol":")")
+                                            + escapeJson(parsed_message.symbol) + R"("})"));
+                }
                 continue;
             }
             case WebSocketMessageType::Ping: {

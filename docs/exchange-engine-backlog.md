@@ -14,15 +14,18 @@ This backlog tracks the path from the current market-data simulator toward a tru
 
 ### EX-001: Finish WebSocket Price Subscription Behavior
 
+Status: In progress
+
 Goal: make the current Pub/Sub slice complete before moving into matching-engine work.
 
 Acceptance criteria:
-- `subscribe:<symbol>` updates the client subscription state.
-- `unsubscribe:<symbol>` updates the client subscription state.
-- Subscribe and unsubscribe commands send acknowledgement messages.
-- Unknown WebSocket messages return `{"error":"unknown_message"}`.
-- `broadcastPriceUpdate` only writes matching updates to each client.
-- Tests cover default delivery, explicit symbol filtering, subscribe helper behavior, and unsubscribe helper behavior.
+- [x] `subscribe:<symbol>` updates the client subscription state.
+- [x] `unsubscribe:<symbol>` updates the client subscription state.
+- [x] Subscribe and unsubscribe commands send acknowledgement messages.
+- [x] Unknown WebSocket messages return `{"error":"unknown_message"}`.
+- [x] `broadcastPriceUpdate` only writes matching updates to each client.
+- [x] Tests cover default delivery, explicit symbol filtering, subscribe helper behavior, and unsubscribe helper behavior.
+- [ ] Add WebSocket integration tests for actual client subscribe/unsubscribe traffic.
 
 Notes:
 - Current default is `receive_all_price_updates = true`.

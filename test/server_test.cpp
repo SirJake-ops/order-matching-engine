@@ -183,4 +183,33 @@ TEST(ServerHelperTest, ShouldDeliverPricesFiltersExplicitSubscriptions) {
     EXPECT_TRUE(Server::should_deliver_prices(client_session, price));
     EXPECT_FALSE(Server::should_deliver_prices(client_session, price2));
 }
+
+TEST(ServerHelperTest, SubscribeToSymbolSwitchesClientToExplicitSymbolFiltering) {
+    boost::asio::io_context io_context;
+    auto websocket =
+        std::make_shared<boost::beast::websocket::stream<Server::tcp::socket>>(io_context);
+    const auto client_session = std::make_shared<Server::ClientSession>(websocket);
+
+    Server::subscribe_to_symbol(client_session, "AAPL");
+
+    EXPECT_FALSE(client_session->receive_all_price_updates);
+    EXPECT_TRUE(client_session->_subscribed_symbols.contains("AAPL"));
+}
+
+TEST(ServerHelperTest, UnsubscribeFromSymbolRemovesSymbolFromExplicitFiltering) {
+    boost::asio::io_context io_context;
+    auto websocket =
+        std::make_shared<boost::beast::websocket::stream<Server::tcp::socket>>(io_context);
+    const auto client_session = std::make_shared<Server::ClientSession>(websocket);
+    const market::MarkPrice price("AAPL", 189.45, 189.50, 189.47, 900);
+
+    Server::subscribe_to_symbol(client_session, "AAPL");
+    ASSERT_TRUE(Server::should_deliver_prices(client_session, price));
+
+    Server::unsubscribe_from_symbol(client_session, "AAPL");
+
+    EXPECT_FALSE(client_session->receive_all_price_updates);
+    EXPECT_FALSE(client_session->_subscribed_symbols.contains("AAPL"));
+    EXPECT_FALSE(Server::should_deliver_prices(client_session, price));
+}
 } // namespace

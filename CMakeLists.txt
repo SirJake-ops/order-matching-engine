@@ -31,7 +31,8 @@ add_library(orderbook
 
 target_include_directories(orderbook PUBLIC ${PROJECT_INCLUDE_DIR})
 
-add_library(events src/events/event_bus.cpp)
+add_library(events src/events/event_bus.cpp
+        include/events/event_types/event_types.h)
 
 target_include_directories(events PUBLIC ${PROJECT_INCLUDE_DIR})
 

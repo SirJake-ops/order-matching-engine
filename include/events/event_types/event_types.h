@@ -46,7 +46,7 @@ namespace event_types {
 
     bool sign_transaction(const std::string &serialized_transaction,
                           std::array<unsigned char, crypto_sign_BYTES> &signature,
-                          std::array<unsigned char, crypto_sign_SECRETKEYBYTES> &sk) {
+                          const std::array<unsigned char, crypto_sign_SECRETKEYBYTES> &sk) {
         return crypto_sign_detached(
                    signature.data(),
                    nullptr,
@@ -56,8 +56,8 @@ namespace event_types {
     }
 
     bool verify_transaction(const std::string &serialized_transaction,
-                            std::array<unsigned char, crypto_sign_BYTES> &signature,
-                            std::array<unsigned char, crypto_sign_PUBLICKEYBYTES> &pk) {
+                            const std::array<unsigned char, crypto_sign_BYTES> &signature,
+                            const std::array<unsigned char, crypto_sign_PUBLICKEYBYTES> &pk) {
         return crypto_sign_verify_detached(
                    signature.data(),
                    reinterpret_cast<const unsigned char *>(serialized_transaction.data()),

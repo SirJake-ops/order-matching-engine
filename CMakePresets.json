@@ -14,7 +14,8 @@
       "binaryDir": "${sourceDir}/build/debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "Boost_INCLUDE_DIR": "/nix/store/7p0nrcgqa1qfgznany6indj0xlcrs375-boost-1.89.0-dev/include"
       }
     },
     {
@@ -25,7 +26,8 @@
       "binaryDir": "${sourceDir}/build/release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "Boost_INCLUDE_DIR": "/nix/store/7p0nrcgqa1qfgznany6indj0xlcrs375-boost-1.89.0-dev/include"
       }
     }
   ],

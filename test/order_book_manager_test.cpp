@@ -17,7 +17,7 @@ Order makeOrder(const std::string &id, const Side side, const double price,
 }
 
 TEST(OrderBookManagerTest, ConstructorCreatesBookForConfiguredSymbol) {
-    OrderBookManager manager("AAPL");
+    OrderBookManager manager({"AAPL"});
 
     const OrderBook &book = manager.get_orderbook("AAPL");
 
@@ -25,8 +25,19 @@ TEST(OrderBookManagerTest, ConstructorCreatesBookForConfiguredSymbol) {
     EXPECT_FALSE(book.bestAsk().has_value());
 }
 
+TEST(OrderBookManagerTest, ConstructorCreatesBooksForMultipleConfiguredSymbols) {
+    OrderBookManager manager({"AAPL", "MSFT"});
+
+    EXPECT_FALSE(manager.get_orderbook("AAPL").bestBid().has_value());
+    EXPECT_FALSE(manager.get_orderbook("MSFT").bestBid().has_value());
+}
+
+TEST(OrderBookManagerTest, ConstructorThrowsForDuplicateSymbols) {
+    EXPECT_THROW(OrderBookManager({"AAPL", "MSFT", "AAPL"}), std::runtime_error);
+}
+
 TEST(OrderBookManagerTest, AddOrderRoutesOrderToConfiguredSymbolBook) {
-    OrderBookManager manager("AAPL");
+    OrderBookManager manager({"AAPL"});
 
     const auto trades = manager.add_order(makeOrder("buy-1", Side::BUY, 100.0, 5));
 
@@ -38,8 +49,24 @@ TEST(OrderBookManagerTest, AddOrderRoutesOrderToConfiguredSymbolBook) {
     EXPECT_EQ(best_bid->_quantity, 5);
 }
 
+TEST(OrderBookManagerTest, AddOrderRoutesOrdersToTheirOwnSymbolBooks) {
+    OrderBookManager manager({"AAPL", "MSFT"});
+
+    manager.add_order(makeOrder("aapl-buy-1", Side::BUY, 100.0, 5, "AAPL"));
+    manager.add_order(makeOrder("msft-buy-1", Side::BUY, 410.0, 7, "MSFT"));
+
+    const auto aapl_best_bid = manager.get_orderbook("AAPL").bestBid();
+    const auto msft_best_bid = manager.get_orderbook("MSFT").bestBid();
+    ASSERT_TRUE(aapl_best_bid.has_value());
+    ASSERT_TRUE(msft_best_bid.has_value());
+    EXPECT_EQ(aapl_best_bid->_id, "aapl-buy-1");
+    EXPECT_EQ(msft_best_bid->_id, "msft-buy-1");
+    EXPECT_DOUBLE_EQ(aapl_best_bid->_price, 100.0);
+    EXPECT_DOUBLE_EQ(msft_best_bid->_price, 410.0);
+}
+
 TEST(OrderBookManagerTest, AddOrderMatchesAgainstExistingOrdersInConfiguredBook) {
-    OrderBookManager manager("AAPL");
+    OrderBookManager manager({"AAPL"});
 
     manager.add_order(makeOrder("sell-1", Side::SELL, 100.0, 5));
     const auto trades = manager.add_order(makeOrder("buy-1", Side::BUY, 101.0, 3));
@@ -57,13 +84,13 @@ TEST(OrderBookManagerTest, AddOrderMatchesAgainstExistingOrdersInConfiguredBook)
 }
 
 TEST(OrderBookManagerTest, GetOrderBookThrowsForUnknownSymbol) {
-    OrderBookManager manager("AAPL");
+    OrderBookManager manager({"AAPL"});
 
     EXPECT_THROW(manager.get_orderbook("MSFT"), std::runtime_error);
 }
 
 TEST(OrderBookManagerTest, AddOrderForUnknownSymbolDoesNotCreateBook) {
-    OrderBookManager manager("AAPL");
+    OrderBookManager manager({"AAPL"});
 
     EXPECT_THROW(manager.add_order(makeOrder("msft-buy-1", Side::BUY, 100.0, 5, "MSFT")),
                  std::runtime_error);

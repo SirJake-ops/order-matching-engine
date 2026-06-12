@@ -1,8 +1,14 @@
+#include <chrono>
+#include <deque>
+#include <memory>
 #include <string>
+#include <thread>
 
 #include <boost/asio/buffer.hpp>
 #include <boost/beast/core/flat_buffer.hpp>
+#include <boost/beast/core/tcp_stream.hpp>
 #include <boost/beast/http.hpp>
+#include <boost/beast/websocket.hpp>
 
 #include "gtest/gtest.h"
 
@@ -13,6 +19,8 @@
 namespace {
 using server::MarketDataStore;
 using server::Server;
+using tcp = boost::asio::ip::tcp;
+namespace websocket = boost::beast::websocket;
 
 boost::beast::flat_buffer makeBuffer(const std::string &message) {
     boost::beast::flat_buffer buffer;
@@ -20,6 +28,95 @@ boost::beast::flat_buffer makeBuffer(const std::string &message) {
     buffer.commit(message.size());
     return buffer;
 }
+
+class WebSocketIntegrationHarness {
+  public:
+    using Client = websocket::stream<boost::beast::tcp_stream>;
+
+  private:
+    boost::asio::io_context server_io;
+    tcp::acceptor acceptor;
+    std::shared_ptr<MarketDataStore> store;
+    Server server;
+    unsigned short port;
+    boost::asio::io_context client_io;
+    std::deque<std::unique_ptr<Client>> clients;
+    std::vector<std::thread> server_threads;
+
+  public:
+    WebSocketIntegrationHarness()
+        : acceptor(server_io, tcp::endpoint(tcp::v4(), 0)),
+          store(std::make_shared<MarketDataStore>()), server(store), port(acceptor.local_endpoint().port()) {}
+
+    ~WebSocketIntegrationHarness() {
+        for (const auto &client : clients) {
+            if (client->is_open()) {
+                boost::system::error_code error_code;
+                client->close(websocket::close_code::normal, error_code);
+            }
+        }
+
+        for (auto &thread : server_threads) {
+            if (thread.joinable()) {
+                thread.join();
+            }
+        }
+    }
+
+    Client &connectClient() {
+        server_threads.emplace_back([this]() {
+            tcp::socket socket(server_io);
+            acceptor.accept(socket);
+            server.handleSession(std::move(socket));
+        });
+
+        auto client = std::make_unique<Client>(client_io);
+        tcp::resolver resolver(client_io);
+        const auto results = resolver.resolve("127.0.0.1", std::to_string(port));
+        boost::beast::get_lowest_layer(*client).connect(results);
+        client->handshake("127.0.0.1", "/ws");
+        clients.push_back(std::move(client));
+        waitForSessionCount(clients.size());
+        return *clients.back();
+    }
+
+    std::string readMessage(Client &client) {
+        boost::beast::flat_buffer buffer;
+        boost::beast::get_lowest_layer(client).expires_after(std::chrono::seconds(1));
+        client.read(buffer);
+        boost::beast::get_lowest_layer(client).expires_never();
+        return boost::beast::buffers_to_string(buffer.data());
+    }
+
+    bool hasPendingBytes(Client &client) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        boost::system::error_code error_code;
+        const auto bytes_available = boost::beast::get_lowest_layer(client).socket().available(error_code);
+        return !error_code && bytes_available > 0;
+    }
+
+    void writeMessage(Client &client, const std::string &message) {
+        boost::beast::get_lowest_layer(client).expires_after(std::chrono::seconds(1));
+        client.write(boost::asio::buffer(message));
+        boost::beast::get_lowest_layer(client).expires_never();
+    }
+
+    Server &getServer() { return server; }
+
+  private:
+    void waitForSessionCount(const std::size_t expected_count) {
+        for (int attempt = 0; attempt < 50; ++attempt) {
+            {
+                std::lock_guard lock(server._sessions_mutex);
+                if (server._sessions.size() == expected_count) {
+                    return;
+                }
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
+};
 
 TEST(ServerHelperTest, HandleRequestReturnsPriceSnapshotForKnownSymbol) {
     auto store = std::make_shared<MarketDataStore>();
@@ -211,5 +308,70 @@ TEST(ServerHelperTest, UnsubscribeFromSymbolRemovesSymbolFromExplicitFiltering) 
     EXPECT_FALSE(client_session->receive_all_price_updates);
     EXPECT_FALSE(client_session->_subscribed_symbols.contains("AAPL"));
     EXPECT_FALSE(Server::should_deliver_prices(client_session, price));
+}
+
+TEST(ServerWebSocketIntegrationTest, ClientCanConnectAndReceiveCommandResponses) {
+    WebSocketIntegrationHarness harness;
+    auto &client = harness.connectClient();
+
+    harness.writeMessage(client, "subscribe:AAPL");
+    EXPECT_EQ(harness.readMessage(client), R"({"type":"subscribed","symbol":"AAPL"})");
+
+    harness.writeMessage(client, "unsubscribe:AAPL");
+    EXPECT_EQ(harness.readMessage(client), R"({"type":"unsubscribed","symbol":"AAPL"})");
+
+    harness.writeMessage(client, "unknown-command");
+    EXPECT_EQ(harness.readMessage(client), R"({"error":"unknown_message"})");
+}
+
+TEST(ServerWebSocketIntegrationTest, DefaultClientReceivesPriceUpdates) {
+    WebSocketIntegrationHarness harness;
+    auto &client = harness.connectClient();
+
+    harness.getServer().broadcastPriceUpdate(market::MarkPrice("AAPL", 189.45, 189.50, 189.47, 900));
+
+    const auto message = harness.readMessage(client);
+    EXPECT_NE(message.find(R"("type":"price_update")"), std::string::npos);
+    EXPECT_NE(message.find(R"("symbol":"AAPL")"), std::string::npos);
+}
+
+TEST(ServerWebSocketIntegrationTest, SubscribedClientReceivesMatchingPriceUpdates) {
+    WebSocketIntegrationHarness harness;
+    auto &client = harness.connectClient();
+
+    harness.writeMessage(client, "subscribe:AAPL");
+    ASSERT_EQ(harness.readMessage(client), R"({"type":"subscribed","symbol":"AAPL"})");
+
+    harness.getServer().broadcastPriceUpdate(market::MarkPrice("AAPL", 189.45, 189.50, 189.47, 900));
+
+    const auto message = harness.readMessage(client);
+    EXPECT_NE(message.find(R"("type":"price_update")"), std::string::npos);
+    EXPECT_NE(message.find(R"("symbol":"AAPL")"), std::string::npos);
+}
+
+TEST(ServerWebSocketIntegrationTest, SubscribedClientDoesNotReceiveNonMatchingPriceUpdates) {
+    WebSocketIntegrationHarness harness;
+    auto &client = harness.connectClient();
+
+    harness.writeMessage(client, "subscribe:AAPL");
+    ASSERT_EQ(harness.readMessage(client), R"({"type":"subscribed","symbol":"AAPL"})");
+
+    harness.getServer().broadcastPriceUpdate(market::MarkPrice("MSFT", 410.10, 410.20, 410.15, 1200));
+
+    EXPECT_FALSE(harness.hasPendingBytes(client));
+}
+
+TEST(ServerWebSocketIntegrationTest, UnsubscribedClientDoesNotReceiveFilteredPriceUpdates) {
+    WebSocketIntegrationHarness harness;
+    auto &client = harness.connectClient();
+
+    harness.writeMessage(client, "subscribe:AAPL");
+    ASSERT_EQ(harness.readMessage(client), R"({"type":"subscribed","symbol":"AAPL"})");
+    harness.writeMessage(client, "unsubscribe:AAPL");
+    ASSERT_EQ(harness.readMessage(client), R"({"type":"unsubscribed","symbol":"AAPL"})");
+
+    harness.getServer().broadcastPriceUpdate(market::MarkPrice("AAPL", 189.45, 189.50, 189.47, 900));
+
+    EXPECT_FALSE(harness.hasPendingBytes(client));
 }
 } // namespace

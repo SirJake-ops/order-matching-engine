@@ -10,7 +10,7 @@ This backlog tracks the path from the current market-data simulator toward a tru
 - WebSocket clients now have per-session symbol subscription state for price updates.
 - `MarketDataStore` stores the latest price snapshot per symbol behind a mutex.
 - Early order-entry domain structs exist in `orderbook::OrderRequest`, `OrderResult`, and `OrderState`.
-- Early `OrderBookManager` scaffolding exists with initial unit tests, but it is not yet a complete order manager and still needs behavior fixes before it should be treated as exchange infrastructure.
+- Early `OrderBookManager` scaffolding exists with multi-symbol construction, initial unit tests, explicit unknown-symbol exceptions, and returned trade results, but it is not yet a complete order manager.
 - The application still behaves mostly like a market-data simulator, not an order-driven exchange.
 
 ## Next Recommended Step
@@ -24,23 +24,23 @@ Goal: turn the current `OrderBookManager` scaffold into a tested, reliable compo
 Acceptance criteria:
 - [x] Add unit tests for construction and routing orders to an existing symbol book.
 - [x] Add tests for current unknown-symbol lookup and submission behavior.
-- [ ] Decide whether unknown order symbols should be rejected or dynamically created.
-- [ ] Fix `add_order` so it does not silently swallow errors or recreate existing books unexpectedly.
-- [ ] Return trades from submitted orders instead of discarding them.
-- [ ] Support construction with multiple configured symbols.
+- [x] Decide whether unknown order symbols should be rejected or dynamically created.
+- [x] Fix `add_order` so it does not silently swallow errors or recreate existing books unexpectedly.
+- [x] Return trades from submitted orders instead of discarding them.
+- [x] Support construction with multiple configured symbols.
 - [ ] Expose clear lookup behavior for missing symbols.
 
 Notes:
-- `test/order_book_manager_test.cpp` covers configured-symbol construction, order routing, matching through the managed book, unknown-symbol lookup, and the current behavior that unknown-symbol submission does not create a book.
-- `OrderBookManager` currently accepts one symbol in its constructor.
-- `add_order` validates that a book exists, then calls `emplace` for the same symbol and adds the order; because `emplace` does not replace an existing key, this happens to route to the existing book, but the intent is unclear.
-- Exceptions are currently caught and logged to `stderr`, which prevents callers from reliably handling rejection paths.
+- Unknown symbols are currently rejected by throwing `std::runtime_error`.
+- `test/order_book_manager_test.cpp` covers configured-symbol construction, multi-symbol construction, duplicate-symbol rejection, order routing, empty trade returns for resting orders, matching through the managed book, returned trade payloads, unknown-symbol lookup, and unknown-symbol submission errors.
+- `OrderBookManager` currently accepts a list of configured symbols.
+- `add_order` validates that a book exists, propagates errors to callers, and returns the trades produced by the underlying book.
 
 ## Recently Completed / Mostly Complete
 
 ### EX-001: Finish WebSocket Price Subscription Behavior
 
-Status: Mostly complete
+Status: Complete
 
 Goal: make the current Pub/Sub slice complete before moving into matching-engine work.
 
@@ -51,11 +51,12 @@ Acceptance criteria:
 - [x] Unknown WebSocket messages return `{"error":"unknown_message"}`.
 - [x] `broadcastPriceUpdate` only writes matching updates to each client.
 - [x] Tests cover default delivery, explicit symbol filtering, subscribe helper behavior, and unsubscribe helper behavior.
-- [ ] Add WebSocket integration tests for actual client subscribe/unsubscribe traffic.
+- [x] Add WebSocket integration tests for actual client subscribe/unsubscribe traffic.
 
 Notes:
 - Current default is `receive_all_price_updates = true`.
 - Once a client subscribes to a symbol, it switches to explicit symbol filtering.
+- `ServerWebSocketIntegrationTest` covers loopback WebSocket connection, subscribe/unsubscribe acknowledgements, unknown-message errors, default price delivery, matching subscribed delivery, and filtered non-delivery.
 
 ## Phase 1: Exchange Domain Model
 
@@ -79,14 +80,15 @@ Status: Started
 
 Acceptance criteria:
 - [ ] Create a component that owns one `orderbook::OrderBook` per symbol.
-- [ ] Route incoming orders to the correct book.
-- [ ] Return trades produced by the book.
+- [x] Route incoming orders to the correct book.
+- [x] Return trades produced by the book.
 - [ ] Track active orders by order id.
 - [ ] Reject duplicate ids, unknown symbols, invalid quantity, and invalid price.
 
 Notes:
 - `include/orderbook/OrderBookManager.h` and `src/orderbook/OrderBookManager.cpp` now exist and are included in the `orderbook` CMake target.
-- The current implementation is scaffold-level only: initial tests exist, but there is no active-order tracking, no multi-symbol initialization, and no returned trade results.
+- The current implementation is scaffold-level only: initial tests and multi-symbol initialization exist, but there is no active-order tracking.
+- Unknown symbols are rejected at the manager level. Duplicate ids, invalid quantity, and invalid price are still enforced by `OrderBook`, not tracked explicitly by `OrderBookManager`.
 
 ### EX-012: Add Trade and Execution Reports
 
@@ -205,13 +207,13 @@ Acceptance criteria:
 
 ### EX-060: Add WebSocket Integration Tests
 
-Status: Not started
+Status: Complete
 
 Acceptance criteria:
-- Test WebSocket connection establishment.
-- Test subscribe and unsubscribe acknowledgements.
-- Test that subscribed clients receive matching price updates.
-- Test that unsubscribed clients do not receive filtered updates.
+- [x] Test WebSocket connection establishment.
+- [x] Test subscribe and unsubscribe acknowledgements.
+- [x] Test that subscribed clients receive matching price updates.
+- [x] Test that unsubscribed clients do not receive filtered updates.
 
 ### EX-061: Add End-to-End Order Flow Tests
 

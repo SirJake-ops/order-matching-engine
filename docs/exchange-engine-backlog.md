@@ -10,7 +10,7 @@ This backlog tracks the path from the current market-data simulator toward a tru
 - WebSocket clients now have per-session symbol subscription state for price updates.
 - `MarketDataStore` stores the latest price snapshot per symbol behind a mutex.
 - Early order-entry domain structs exist in `orderbook::OrderRequest`, `OrderResult`, and `OrderState`.
-- Early `OrderBookManager` scaffolding exists, but it is not yet a complete order manager and currently needs behavior fixes and tests before it should be treated as exchange infrastructure.
+- Early `OrderBookManager` scaffolding exists with initial unit tests, but it is not yet a complete order manager and still needs behavior fixes before it should be treated as exchange infrastructure.
 - The application still behaves mostly like a market-data simulator, not an order-driven exchange.
 
 ## Next Recommended Step
@@ -22,14 +22,16 @@ Status: In progress
 Goal: turn the current `OrderBookManager` scaffold into a tested, reliable component before adding HTTP order entry.
 
 Acceptance criteria:
-- [ ] Add unit tests for routing orders to an existing symbol book.
-- [ ] Add tests for unknown symbols and decide whether unknown symbols should be rejected or dynamically created.
+- [x] Add unit tests for construction and routing orders to an existing symbol book.
+- [x] Add tests for current unknown-symbol lookup and submission behavior.
+- [ ] Decide whether unknown order symbols should be rejected or dynamically created.
 - [ ] Fix `add_order` so it does not silently swallow errors or recreate existing books unexpectedly.
 - [ ] Return trades from submitted orders instead of discarding them.
 - [ ] Support construction with multiple configured symbols.
 - [ ] Expose clear lookup behavior for missing symbols.
 
 Notes:
+- `test/order_book_manager_test.cpp` covers configured-symbol construction, order routing, matching through the managed book, unknown-symbol lookup, and the current behavior that unknown-symbol submission does not create a book.
 - `OrderBookManager` currently accepts one symbol in its constructor.
 - `add_order` validates that a book exists, then calls `emplace` for the same symbol and adds the order; because `emplace` does not replace an existing key, this happens to route to the existing book, but the intent is unclear.
 - Exceptions are currently caught and logged to `stderr`, which prevents callers from reliably handling rejection paths.
@@ -84,7 +86,7 @@ Acceptance criteria:
 
 Notes:
 - `include/orderbook/OrderBookManager.h` and `src/orderbook/OrderBookManager.cpp` now exist and are included in the `orderbook` CMake target.
-- The current implementation is scaffold-level only: no tests, no active-order tracking, no multi-symbol initialization, and no returned trade results.
+- The current implementation is scaffold-level only: initial tests exist, but there is no active-order tracking, no multi-symbol initialization, and no returned trade results.
 
 ### EX-012: Add Trade and Execution Reports
 

@@ -28,7 +28,7 @@ Acceptance criteria:
 - [x] Fix `add_order` so it does not silently swallow errors or recreate existing books unexpectedly.
 - [x] Return trades from submitted orders instead of discarding them.
 - [x] Support construction with multiple configured symbols.
-- [ ] Expose clear lookup behavior for missing symbols.
+- [x] Expose clear lookup behavior for missing symbols.
 
 Notes:
 - Unknown symbols are currently rejected by throwing `std::runtime_error`.

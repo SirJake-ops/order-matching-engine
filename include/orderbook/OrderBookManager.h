@@ -21,7 +21,7 @@ class OrderBookManager {
     }
 
     std::vector<orderbook::Trade> add_order(const orderbook::Order &order);
-    const orderbook::OrderBook &get_orderbook(const std::string &symbol);
+    [[nodiscard]] const orderbook::OrderBook &get_orderbook(const std::string &symbol) const;
 
   private:
     std::unordered_map<std::string, orderbook::OrderBook> _orderbooks;

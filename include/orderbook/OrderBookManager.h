@@ -9,7 +9,7 @@ class OrderBookManager {
     explicit OrderBookManager(const std::string &symbol)
         : _orderbooks({{symbol, orderbook::OrderBook(symbol)}}) {}
 
-    void add_order(const orderbook::Order &order);
+    std::vector<orderbook::Trade> add_order(const orderbook::Order &order);
     const orderbook::OrderBook &get_orderbook(const std::string &symbol);
 
   private:

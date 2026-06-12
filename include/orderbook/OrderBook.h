@@ -15,6 +15,12 @@
 #include <vector>
 
 namespace orderbook {
+enum class OrderStatus {
+    NEW,
+    PARTIALLY_FILLED,
+    FILLED,
+    CANCELLED,
+};
 enum class Side {
     BUY,
     SELL,
@@ -23,6 +29,15 @@ enum class Side {
 enum class OrderType {
     LIMIT,
     MARKET,
+};
+
+struct Trade {
+    std::string _buy_order_id;
+    std::string _sell_order_id;
+    std::string _symbol;
+    double _price;
+    std::int64_t _quantity;
+    std::uint64_t _timestamp;
 };
 
 struct Order {
@@ -35,13 +50,30 @@ struct Order {
     std::uint64_t _timestamp;
 };
 
-struct Trade {
-    std::string _buy_order_id;
-    std::string _sell_order_id;
+struct OrderRequest {
+    std::string client_order_id;
     std::string _symbol;
+    Side _side;
+    OrderType _type;
     double _price;
     std::int64_t _quantity;
-    std::uint64_t _timestamp;
+};
+
+struct OrderResult {
+    std::string order_id;
+    std::string client_order_id;
+    std::string symbol;
+    OrderStatus status;
+    std::string reject_reason;
+    std::vector<orderbook::Trade> trades;
+};
+
+struct OrderState {
+    orderbook::Order order;
+    OrderStatus status;
+    std::int64_t original_quantity;
+    std::int64_t remaining_quantity;
+    std::int64_t filled_quantity;
 };
 
 class OrderBook {
@@ -60,8 +92,7 @@ class OrderBook {
     [[nodiscard]] std::optional<Order> bestAsk() const;
 
     [[nodiscard]] std::vector<std::pair<double, int64_t>> bid_depth(std::size_t levels) const;
-    [[nodiscard]] std::vector<std::pair<double, std::int64_t>>
-    ask_depths(std::size_t levels) const;
+    [[nodiscard]] std::vector<std::pair<double, std::int64_t>> ask_depths(std::size_t levels) const;
 
   private:
     std::string _symbol;

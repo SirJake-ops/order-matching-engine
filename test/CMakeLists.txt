@@ -21,6 +21,7 @@ add_executable(
 
 target_link_libraries(TradingExchangeEngineTest
     PRIVATE
+    project_includes
     GTest::gtest
     GTest::gtest_main
     GTest::gmock
@@ -30,8 +31,6 @@ target_link_libraries(TradingExchangeEngineTest
     events
     transport
 )
-
-target_include_directories(TradingExchangeEngineTest PRIVATE ../include)
 
 include(GoogleTest)
 gtest_discover_tests(TradingExchangeEngineTest)

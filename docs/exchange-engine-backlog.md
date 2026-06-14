@@ -79,7 +79,7 @@ Notes:
 Status: Started
 
 Acceptance criteria:
-- [ ] Create a component that owns one `orderbook::OrderBook` per symbol.
+- [x] Create a component that owns one `orderbook::OrderBook` per symbol.
 - [x] Route incoming orders to the correct book.
 - [x] Return trades produced by the book.
 - [ ] Track active orders by order id.
@@ -89,7 +89,8 @@ Notes:
 - `include/orderbook/OrderBookManager.h` and `src/orderbook/OrderBookManager.cpp` now exist and are included in the `orderbook` CMake target.
 - The current implementation is scaffold-level only: initial tests and multi-symbol initialization exist, but there is no active-order tracking.
 - Unknown symbols are rejected at the manager level. Duplicate ids, invalid quantity, and invalid price are still enforced by `OrderBook`, not tracked explicitly by `OrderBookManager`.
-
+- `OrderBookManager` currently tracks by seen symbols and not by order id.
+- `OrderBookManager` is not yet wired into the API or transport layers.
 ### EX-012: Add Trade and Execution Reports
 
 Status: Not started

@@ -20,6 +20,9 @@
 namespace {
     using server::MarketDataStore;
     using server::Server;
+    using orderbook::Order;
+    using orderbook::OrderType;
+    using orderbook::Side;
     using tcp = boost::asio::ip::tcp;
     namespace websocket = boost::beast::websocket;
 
@@ -33,6 +36,13 @@ namespace {
     std::shared_ptr<orderbook_manager::OrderBookManager> makeOrderBookManager() {
         return std::make_shared<orderbook_manager::OrderBookManager>(
             std::vector<std::string>{"AAPL", "MSFT", "BTC/USD"});
+    }
+
+    Order makeOrder(const std::string &id, const Side side, const double price,
+                    const std::int64_t quantity, const std::string &symbol = "AAPL",
+                    const std::uint64_t timestamp = 1,
+                    const OrderType type = OrderType::LIMIT) {
+        return Order{id, symbol, side, type, price, quantity, timestamp};
     }
 
     class WebSocketIntegrationHarness {
@@ -202,6 +212,44 @@ namespace {
         upgrade_request.set(boost::beast::http::field::sec_websocket_version, "13");
         upgrade_request.set(boost::beast::http::field::sec_websocket_key, "dGhlIHNhbXBsZSBub25jZQ==");
         EXPECT_TRUE(Server::isWebSocketUpgrade(upgrade_request));
+    }
+
+    TEST(ServerHelperTest, ShouldReturnOrderBookForSymbol) {
+        auto store = std::make_shared<MarketDataStore>();
+        Server server(store, makeOrderBookManager());
+        Server::Request request{boost::beast::http::verb::get, "/api/market/orderbook/AAPL", 11};
+
+        const auto response = server.handleRequest(request);
+
+        EXPECT_EQ(response.result(), boost::beast::http::status::ok);
+        EXPECT_EQ(response.body(), R"({"symbol":"AAPL","bids":[],"asks":[]})");
+    }
+
+    TEST(ServerHelperTest, HandleRequestReturnsNotFoundForUnknownOrderBookSymbol) {
+        auto store = std::make_shared<MarketDataStore>();
+        Server server(store, makeOrderBookManager());
+        Server::Request request{boost::beast::http::verb::get, "/api/market/orderbook/NVDA", 11};
+
+        const auto response = server.handleRequest(request);
+
+        EXPECT_EQ(response.result(), boost::beast::http::status::not_found);
+        EXPECT_EQ(response.body(), R"({"error":"symbol_not_found"})");
+    }
+
+    TEST(ServerHelperTest, HandleRequestReturnsOrderBookDepthForSymbol) {
+        auto store = std::make_shared<MarketDataStore>();
+        auto order_book_manager = makeOrderBookManager();
+        order_book_manager->add_order(makeOrder("buy-1", Side::BUY, 100.0, 3));
+        order_book_manager->add_order(makeOrder("buy-2", Side::BUY, 99.0, 2));
+        order_book_manager->add_order(makeOrder("sell-1", Side::SELL, 101.0, 4));
+        Server server(store, order_book_manager);
+        Server::Request request{boost::beast::http::verb::get, "/api/market/orderbook/AAPL", 11};
+
+        const auto response = server.handleRequest(request);
+
+        EXPECT_EQ(response.result(), boost::beast::http::status::ok);
+        EXPECT_EQ(response.body(),
+                  R"({"symbol":"AAPL","bids":[{"price":100,"quantity":3},{"price":99,"quantity":2}],"asks":[{"price":101,"quantity":4}]})");
     }
 
     TEST(ServerHelperTest, BuildPriceUpdateMessageUsesCurrentWebSocketEnvelope) {

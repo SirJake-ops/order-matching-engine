@@ -17,7 +17,7 @@ This backlog tracks the path from the current market-data simulator toward a tru
 
 ### EX-011A: Stabilize the Early Order Book Manager
 
-Status: In progress
+Status: Complete
 
 Goal: turn the current `OrderBookManager` scaffold into a tested, reliable component before adding HTTP order entry.
 
@@ -35,6 +35,7 @@ Notes:
 - `test/order_book_manager_test.cpp` covers configured-symbol construction, multi-symbol construction, duplicate-symbol rejection, order routing, empty trade returns for resting orders, matching through the managed book, returned trade payloads, unknown-symbol lookup, and unknown-symbol submission errors.
 - `OrderBookManager` currently accepts a list of configured symbols.
 - `add_order` validates that a book exists, propagates errors to callers, and returns the trades produced by the underlying book.
+- `OrderBookManager` now tracks active orders and seen order ids, updates active state as trades fill orders, and removes fully filled or market orders from the active set.
 
 ## Recently Completed / Mostly Complete
 
@@ -76,20 +77,22 @@ Notes:
 
 ### EX-011: Add an Order Manager
 
-Status: Started
+Status: Mostly complete
 
 Acceptance criteria:
-- [ ] Create a component that owns one `orderbook::OrderBook` per symbol.
+- [x] Create a component that owns one `orderbook::OrderBook` per symbol.
 - [x] Route incoming orders to the correct book.
 - [x] Return trades produced by the book.
-- [ ] Track active orders by order id.
-- [ ] Reject duplicate ids, unknown symbols, invalid quantity, and invalid price.
+- [x] Track active orders by order id.
+- [x] Reject duplicate ids, unknown symbols, invalid quantity, and invalid price.
+- [ ] Wire the order manager into the order-entry API.
 
 Notes:
 - `include/orderbook/OrderBookManager.h` and `src/orderbook/OrderBookManager.cpp` now exist and are included in the `orderbook` CMake target.
-- The current implementation is scaffold-level only: initial tests and multi-symbol initialization exist, but there is no active-order tracking.
-- Unknown symbols are rejected at the manager level. Duplicate ids, invalid quantity, and invalid price are still enforced by `OrderBook`, not tracked explicitly by `OrderBookManager`.
-
+- The manager owns one book per configured symbol and rejects duplicate configured symbols.
+- Unknown symbols, duplicate order ids, invalid quantity, and invalid limit price are rejected at the manager level before routing to an order book.
+- `OrderBookManager` tracks active orders by order id, keeps a seen-order-id set so ids cannot be reused after fills, and updates active state as trades are applied.
+- `OrderBookManager` is not yet wired into the API or transport layers.
 ### EX-012: Add Trade and Execution Reports
 
 Status: Not started
@@ -111,6 +114,21 @@ Acceptance criteria:
 - Submit valid orders to the order manager.
 - Return accepted/rejected response with order id and status.
 - Return generated trades or execution reports when matches occur.
+
+Test checklist:
+- [ ] Valid resting limit order returns accepted/new status.
+- [ ] Crossing limit order returns generated trades in the response.
+- [ ] Market order submits without requiring a positive price.
+- [ ] Unknown symbol returns rejected or not-found behavior.
+- [ ] Duplicate client order id is rejected.
+- [ ] Invalid quantity is rejected.
+- [ ] Invalid limit price is rejected.
+- [ ] Malformed JSON is rejected.
+- [ ] Unsupported side/type strings are rejected.
+
+Notes:
+- Current source tests already cover manager-level validation, active-order tracking, duplicate ids after fills, market orders, and multi-symbol routing.
+- Treat `client_order_id` as the order id for the first API slice unless a separate exchange-generated id is introduced.
 
 ### EX-021: Implement `DELETE /api/orders/{order_id}`
 
@@ -156,11 +174,12 @@ Status: Partially complete
 
 Acceptance criteria:
 - [ ] `GET /api/market/prices` returns all latest prices.
-- [ ] `GET /api/market/orderbook/{symbol}` returns current depth.
+- [x] `GET /api/market/orderbook/{symbol}` returns current depth.
 - [ ] `GET /api/market/trades` returns recent trades.
 
 Notes:
 - `GET /api/market/prices/{symbol}` exists and returns a single latest price snapshot.
+- `GET /api/market/orderbook/{symbol}` exists and returns bid/ask depth from `OrderBookManager`.
 - `MarketDataStore::getAllPrices()` exists, but there is no REST endpoint for all prices yet.
 
 ## Phase 4: Event Model
@@ -204,6 +223,11 @@ Acceptance criteria:
 - Use instrument rules for price precision and quantity precision.
 
 ## Phase 6: Reliability and Quality
+
+### Local Test Discovery Note
+
+- The existing `build/debug` tree may be stale until CMake/Ninja is repaired and tests are rediscovered.
+- When the build environment is healthy, rerun configure/build/test before relying on the discovered test list.
 
 ### EX-060: Add WebSocket Integration Tests
 

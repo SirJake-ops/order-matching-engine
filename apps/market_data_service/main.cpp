@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "events/event_bus.h"
+#include "orderbook/OrderBookManager.h"
 #include "orderbook/OrderBookSimulator.h"
 #include "simulation/MarketSimulator.h"
 #include "transport/MarketDataStore.h"
@@ -20,16 +21,19 @@ int main() {
     });
 
     const std::vector<std::string> symbols = {
-        "AAPL", "MSFT", "NVDA", "AMZN",    "GOOGL",   "META",    "TSLA",    "JPM",    "BAC",
-        "XOM",  "SPY",  "QQQ",  "BTC/USD", "ETH/USD", "SOL/USD", "EUR/USD", "GBP/USD"};
+        "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "JPM", "BAC",
+        "XOM", "SPY", "QQQ", "BTC/USD", "ETH/USD", "SOL/USD", "EUR/USD", "GBP/USD"
+    };
+
+    auto order_book_manager = std::make_shared<orderbook_manager::OrderBookManager>(symbols);
     const market::MarketSimulator simulator(bus, symbols);
-    server::Server http_server(market_data_store, 8080);
+    server::Server http_server(market_data_store, order_book_manager, 8080);
 
     std::cout << "Starting Market Data Service..." << std::endl;
     std::thread server_thread([&http_server]() { http_server.run(); });
 
     while (true) {
-        for (const auto &price : simulator.update()) {
+        for (const auto &price: simulator.update()) {
             book.onPriceUpdate(price);
             market_data_store->updatePrice(price);
             http_server.broadcastPriceUpdate(price);

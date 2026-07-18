@@ -15,78 +15,94 @@
 #include <boost/beast.hpp>
 #include <boost/beast/http.hpp>
 
+#include "orderbook/OrderBookManager.h"
 #include "transport/MarketDataStore.h"
 
 namespace server {
+    class Server {
+    public:
+        explicit Server(std::shared_ptr<MarketDataStore> market_data_store,
+                        std::shared_ptr<orderbook_manager::OrderBookManager> order_book_manager,
+                        unsigned short port = 8080);
 
-class Server {
-  public:
-    explicit Server(std::shared_ptr<MarketDataStore> market_data_store, unsigned short port = 8080);
+        void run();
 
-    void run();
+        void handleSession(boost::asio::ip::tcp::socket socket);
 
-    void handleSession(boost::asio::ip::tcp::socket socket);
+        void broadcastPriceUpdate(const market::MarkPrice &price);
 
-    void broadcastPriceUpdate(const market::MarkPrice &price);
+    private:
+        enum class WebSocketMessageType { Subscribe, Unsubscribe, Ping, Unknown };
 
-  private:
-    enum class WebSocketMessageType { Subscribe, Unsubscribe, Ping, Unknown };
+        struct WebSocketMessage {
+            WebSocketMessageType type{WebSocketMessageType::Unknown};
+            std::string symbol;
+        };
 
-    struct WebSocketMessage {
-        WebSocketMessageType type{WebSocketMessageType::Unknown};
-        std::string symbol;
-    };
+        using tcp = boost::asio::ip::tcp;
+        using Request = boost::beast::http::request<boost::beast::http::string_body>;
+        using Response = boost::beast::http::response<boost::beast::http::string_body>;
+        using WebsocketSession = std::shared_ptr<boost::beast::websocket::stream<tcp::socket> >;
 
-    using tcp = boost::asio::ip::tcp;
-    using Request = boost::beast::http::request<boost::beast::http::string_body>;
-    using Response = boost::beast::http::response<boost::beast::http::string_body>;
-    using WebsocketSession = std::shared_ptr<boost::beast::websocket::stream<tcp::socket>>;
+        struct ClientSession {
+            explicit ClientSession(WebsocketSession socket) : _socket(std::move(socket)) {
+            }
 
-    struct ClientSession {
-        explicit ClientSession(WebsocketSession socket) : _socket(std::move(socket)) {}
+            WebsocketSession _socket;
+            std::set<std::string> _subscribed_symbols;
+            bool receive_all_price_updates{true};
+        };
 
-        WebsocketSession _socket;
-        std::set<std::string> _subscribed_symbols;
-        bool receive_all_price_updates{true};
-    };
+        struct OrderParseResult {
+            std::optional<orderbook::OrderRequest> order_request;
+            std::string error_message;
+        };
 
-    using ClientSessionPtr = std::shared_ptr<ClientSession>;
+        using ClientSessionPtr = std::shared_ptr<ClientSession>;
 
-    [[nodiscard]] Response handleRequest(const Request &request) const;
+        OrderParseResult parse_request_return_order(const std::string &value) const;
 
-    [[nodiscard]] std::string buildPriceResponse(const market::MarkPrice &price) const;
+        [[nodiscard]] Response handleRequest(const Request &request) const;
 
-    [[nodiscard]] static std::string escapeJson(const std::string &value);
+        [[nodiscard]] std::string buildPriceResponse(const market::MarkPrice &price) const;
 
-    [[nodiscard]] static std::string decodeUrlComponent(const std::string &value);
+        [[nodiscard]] static std::string escapeJson(const std::string &value);
 
-    [[nodiscard]] static bool isWebSocketUpgrade(const Request &request);
+        [[nodiscard]] static std::string decodeUrlComponent(const std::string &value);
 
-    [[nodiscard]] static std::string buildPriceUpdateMessage(const market::MarkPrice &price);
+        [[nodiscard]] static bool isWebSocketUpgrade(const Request &request);
 
-    void handleWebSocketSession(const ClientSessionPtr &client_session);
-    void registerSession(const ClientSessionPtr &client_session);
+        [[nodiscard]] static std::string buildPriceUpdateMessage(const market::MarkPrice &price);
 
-    void unregisterSession(const ClientSessionPtr &client_session);
+        [[nodiscard]] static std::string buildOrderBookResponse(const std::string &symbol,
+                                                                const orderbook::OrderBook &order_book,
+                                                                std::size_t levels);
 
-    static void subscribe_to_symbol(const ClientSessionPtr &client_session,
-                                    const std::string &symbol);
+        void handleWebSocketSession(const ClientSessionPtr &client_session);
 
-    static void unsubscribe_from_symbol(const ClientSessionPtr &client_session,
+        void registerSession(const ClientSessionPtr &client_session);
+
+        void unregisterSession(const ClientSessionPtr &client_session);
+
+        static void subscribe_to_symbol(const ClientSessionPtr &client_session,
                                         const std::string &symbol);
 
-    [[nodiscard]] static bool should_deliver_prices(const ClientSessionPtr &client_session,
-                                                    const market::MarkPrice &price);
+        static void unsubscribe_from_symbol(const ClientSessionPtr &client_session,
+                                            const std::string &symbol);
 
-    WebSocketMessage parseWebSocketMessage(const boost::beast::flat_buffer &buffer);
+        [[nodiscard]] static bool should_deliver_prices(const ClientSessionPtr &client_session,
+                                                        const market::MarkPrice &price);
 
-    std::shared_ptr<MarketDataStore> _market_data_store;
+        WebSocketMessage parseWebSocketMessage(const boost::beast::flat_buffer &buffer);
 
-    mutable std::mutex _sessions_mutex;
-    mutable std::mutex _web_socket_write_mutex;
-    std::vector<ClientSessionPtr> _sessions;
-    unsigned short _port;
-};
+        std::shared_ptr<MarketDataStore> _market_data_store;
+        std::shared_ptr<orderbook_manager::OrderBookManager> _order_book_manager;
+
+        mutable std::mutex _sessions_mutex;
+        mutable std::mutex _web_socket_write_mutex;
+        std::vector<ClientSessionPtr> _sessions;
+        unsigned short _port;
+    };
 } // namespace server
 
 #endif // TRADINGEXCHANGE_SERVER_H

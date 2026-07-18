@@ -7,7 +7,7 @@
 - Market price generation is implemented.
 - The event bus and order book components exist.
 - The transport layer is under active refactor for HTTP and WebSocket support.
-- WebSocket backlog items are tracked in [pseudo-jira-websocket.md](/home/jake/cpp-projects/trading-exchange-engine/pseudo-jira-websocket.md).
+- Backlog items are tracked in [docs/exchange-engine-backlog.md](docs/exchange-engine-backlog.md).
 
 ## Project Layout
 

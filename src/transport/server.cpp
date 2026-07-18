@@ -4,6 +4,8 @@
 
 #include "transport/server.h"
 
+#include <boost/json.hpp>
+
 #include <cctype>
 #include <iomanip>
 #include <iostream>
@@ -22,6 +24,10 @@ namespace server {
         : _market_data_store(std::move(market_data_store)),
           _order_book_manager(std::move(order_book_manager)),
           _port(port) {
+    }
+
+    Server::OrderParseResult Server::parse_request_return_order(const std::string &value) const {
+        return {};
     }
 
     void Server::run() {
@@ -105,56 +111,78 @@ namespace server {
         }
     }
 
+
     Server::Response Server::handleRequest(const Request &request) const {
         Response response;
         response.version(request.version());
         response.keep_alive(false);
         response.set(http::field::content_type, "application/json");
 
-        if (request.method() != http::verb::get) {
-            response.result(http::status::method_not_allowed);
-            response.body() = R"({"error":"method_not_allowed"})";
-            response.prepare_payload();
-            return response;
-        }
+        if (request.method() == http::verb::get) {
+            const std::string target = std::string(request.target());
+            constexpr std::string_view symbol_path_prefix = "/api/market/prices/";
+            if (target.rfind(symbol_path_prefix.data(), 0) == 0
+                && target.size() > symbol_path_prefix.size()) {
+                const std::string symbol = decodeUrlComponent(target.substr(symbol_path_prefix.size()));
+                const auto price = _market_data_store->getPriceForSymbol(symbol);
+                if (!price.has_value()) {
+                    response.result(http::status::not_found);
+                    response.body() = R"({"error":"symbol_not_found"})";
+                    response.prepare_payload();
+                    return response;
+                }
 
-        const std::string target = std::string(request.target());
-        constexpr std::string_view symbol_path_prefix = "/api/market/prices/";
-        if (target.rfind(symbol_path_prefix.data(), 0) == 0
-            && target.size() > symbol_path_prefix.size()) {
-            const std::string symbol = decodeUrlComponent(target.substr(symbol_path_prefix.size()));
-            const auto price = _market_data_store->getPriceForSymbol(symbol);
-            if (!price.has_value()) {
-                response.result(http::status::not_found);
-                response.body() = R"({"error":"symbol_not_found"})";
-                response.prepare_payload();
-                return response;
-            }
-
-            response.result(http::status::ok);
-            response.body() = buildPriceResponse(price.value());
-            response.prepare_payload();
-            return response;
-        }
-
-        constexpr std::string_view orderbook_path_prefix = "/api/market/orderbook/";
-        if (target.rfind(orderbook_path_prefix.data(), 0) == 0 && target.size() > orderbook_path_prefix.size()) {
-            const std::string symbol = decodeUrlComponent(target.substr(orderbook_path_prefix.size()));
-            try {
-                const auto &book = _order_book_manager->get_orderbook(symbol);
                 response.result(http::status::ok);
-                response.body() = buildOrderBookResponse(symbol, book, 5);
+                response.body() = buildPriceResponse(price.value());
                 response.prepare_payload();
                 return response;
-            } catch (const std::runtime_error &) {
-                response.result(http::status::not_found);
-                response.body() = R"({"error":"symbol_not_found"})";
+            }
+
+            constexpr std::string_view orderbook_path_prefix = "/api/market/orderbook/";
+            if (target.rfind(orderbook_path_prefix.data(), 0) == 0 && target.size() > orderbook_path_prefix.size()) {
+                const std::string symbol = decodeUrlComponent(target.substr(orderbook_path_prefix.size()));
+                try {
+                    const auto &book = _order_book_manager->get_orderbook(symbol);
+                    response.result(http::status::ok);
+                    response.body() = buildOrderBookResponse(symbol, book, 5);
+                    response.prepare_payload();
+                    return response;
+                } catch (const std::runtime_error &) {
+                    response.result(http::status::not_found);
+                    response.body() = R"({"error":"symbol_not_found"})";
+                    response.prepare_payload();
+                    return response;
+                }
+            }
+            response.result(http::status::not_found);
+            response.body() = R"({"error":"not_found"})";
+            response.prepare_payload();
+            return response;
+        }
+
+        if (request.method() == http::verb::post) {
+            const auto target = std::string(request.target());
+            const std::string symbol = decodeUrlComponent(target.substr(target.rfind('/') + 1));
+            const auto request_body = std::string(request.body());
+            const auto parsed_order = parse_request_return_order(request_body);
+
+            try {
+                std::cout << "Not Implemented Yet" << std::endl;
+            } catch (const std::runtime_error &error) {
+                response.result(http::status::bad_request);
+                boost::json::object body{
+                    {"status", "rejected"},
+                    {"error", error.what()},
+                };
+
+                response.body() = boost::json::serialize(body);
                 response.prepare_payload();
                 return response;
             }
         }
-        response.result(http::status::not_found);
-        response.body() = R"({"error":"not_found"})";
+
+        response.result(http::status::method_not_allowed);
+        response.body() = R"({"error":"method_not_allowed"})";
         response.prepare_payload();
         return response;
     }

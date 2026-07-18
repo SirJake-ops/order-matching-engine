@@ -53,7 +53,14 @@ namespace server {
             bool receive_all_price_updates{true};
         };
 
+        struct OrderParseResult {
+            std::optional<orderbook::OrderRequest> order_request;
+            std::string error_message;
+        };
+
         using ClientSessionPtr = std::shared_ptr<ClientSession>;
+
+        OrderParseResult parse_request_return_order(const std::string &value) const;
 
         [[nodiscard]] Response handleRequest(const Request &request) const;
 

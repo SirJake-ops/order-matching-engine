@@ -4,12 +4,16 @@
 
 #include "pricing/MarkPrice.h"
 #include "pricing/PriceGenerator.h"
+#include <mutex>
 #include <random>
 #include <string>
 #include <unordered_map>
 
 namespace market {
 MarkPrice PriceGenerator::generatePrice(const std::string &symbol) {
+    static std::mutex generator_mutex;
+    std::lock_guard lock(generator_mutex);
+
     static std::unordered_map<std::string, double> prevPrices;
     static std::normal_distribution<double> norm(0.0, 1.0);
 

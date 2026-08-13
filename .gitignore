@@ -35,3 +35,9 @@ lib/
 *.dylib
 *.dll
 *.exe
+
+# Local Unix executables and editor/test output
+/market_data_service
+/test/TradingExchangeTest
+/test/cmake_test_discovery_*.json
+*.log

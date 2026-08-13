@@ -15,7 +15,7 @@ endif ()
 
 find_program(GCOVR_EXECUTABLE gcovr)
 
-find_package(Boost 1.75 CONFIG REQUIRED COMPONENTS json)
+find_package(Boost 1.75 CONFIG REQUIRED)
 
 set(PROJECT_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
@@ -25,21 +25,19 @@ target_include_directories(project_includes INTERFACE ${PROJECT_INCLUDE_DIR})
 add_library(pricing src/pricing/MarketPrice.cpp)
 target_link_libraries(pricing PUBLIC project_includes)
 
-add_library(events src/events/event_bus.cpp
-        include/events/event_types/event_types.h)
+add_library(events src/events/event_bus.cpp)
 target_link_libraries(events PUBLIC project_includes Boost::headers)
 
 add_library(simulation src/simulation/MarketSimulator.cpp)
 target_link_libraries(simulation PUBLIC project_includes pricing events)
 
 add_library(
-        orderbook src/orderbook/OrderBookManager.cpp src/orderbook/OrderBook.cpp
-        src/orderbook/OrderBookSimulator.cpp)
+        orderbook src/orderbook/OrderBookManager.cpp src/orderbook/OrderBook.cpp)
 target_link_libraries(orderbook PUBLIC project_includes pricing)
 
 add_library(transport src/transport/MarketDataStore.cpp
         src/transport/server.cpp)
-target_link_libraries(transport PUBLIC project_includes pricing Boost::headers Boost::json)
+target_link_libraries(transport PUBLIC project_includes pricing Boost::headers)
 
 add_executable(market_data_service apps/market_data_service/main.cpp)
 target_include_directories(market_data_service PRIVATE ${PROJECT_INCLUDE_DIR})

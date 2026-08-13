@@ -7,27 +7,21 @@
 
 #include <functional>
 #include <map>
-#include <vector>
+#include <mutex>
 #include <string>
+#include <vector>
 
 namespace events {
     class event_bus {
     public:
         using Callback = std::function<void(const std::string &)>;
 
-        void subscribe(const std::string &topic, Callback callback) {
-            _subscribers[topic].push_back(std::move(callback));
-        }
+        void subscribe(const std::string &topic, Callback callback);
 
-        void publish(const std::string &topic, const std::string &message) {
-            if (_subscribers.contains(topic)) {
-                for (const auto &callback: _subscribers[topic]) {
-                    callback(message);
-                }
-            }
-        }
+        void publish(const std::string &topic, const std::string &message) const;
 
     private:
+        mutable std::mutex _subscribers_mutex;
         std::map<std::string, std::vector<Callback> > _subscribers;
     };
 }

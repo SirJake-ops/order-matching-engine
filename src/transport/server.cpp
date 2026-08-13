@@ -4,8 +4,11 @@
 
 #include "transport/server.h"
 
-#include <boost/json.hpp>
+#include <boost/asio/bind_executor.hpp>
+#include <boost/asio/dispatch.hpp>
+#include <boost/asio/post.hpp>
 
+#include <chrono>
 #include <cctype>
 #include <iomanip>
 #include <iostream>
@@ -19,6 +22,121 @@ namespace http = boost::beast::http;
 using tcp = boost::asio::ip::tcp;
 
 namespace server {
+    Server::ClientSession::ClientSession(WebsocketSession socket, Server &server)
+        : _socket(std::move(socket)),
+          _server(server),
+          _strand(boost::asio::make_strand(
+              static_cast<boost::asio::io_context &>(_socket->get_executor().context()))) {
+    }
+
+    void Server::ClientSession::start() {
+        const auto self = shared_from_this();
+        boost::asio::dispatch(_strand, [self]() { self->readNext(); });
+    }
+
+    void Server::ClientSession::send(std::string message) {
+        const auto self = shared_from_this();
+        boost::asio::post(_strand, [self, message = std::move(message)]() mutable {
+            self->queueMessage(std::move(message));
+        });
+    }
+
+    void Server::ClientSession::shutdown() {
+        const auto self = shared_from_this();
+        boost::asio::post(_strand, [self]() { self->stop(); });
+    }
+
+    void Server::ClientSession::readNext() {
+        if (_stopped) {
+            return;
+        }
+
+        _read_buffer.consume(_read_buffer.size());
+        const auto self = shared_from_this();
+        _socket->async_read(
+            _read_buffer,
+            boost::asio::bind_executor(_strand, [self](const boost::system::error_code &error_code,
+                                                       const std::size_t) {
+                self->handleRead(error_code);
+            }));
+    }
+
+    void Server::ClientSession::handleRead(const boost::system::error_code &error_code) {
+        if (error_code) {
+            stop();
+            return;
+        }
+
+        const auto parsed_message = _server.parseWebSocketMessage(_read_buffer);
+        switch (parsed_message.type) {
+            case WebSocketMessageType::Subscribe:
+                Server::subscribe_to_symbol(shared_from_this(), parsed_message.symbol);
+                queueMessage(std::string(R"({"type":"subscribed","symbol":")")
+                             + Server::escapeJson(parsed_message.symbol) + R"("})");
+                break;
+            case WebSocketMessageType::Unsubscribe:
+                Server::unsubscribe_from_symbol(shared_from_this(), parsed_message.symbol);
+                queueMessage(std::string(R"({"type":"unsubscribed","symbol":")")
+                             + Server::escapeJson(parsed_message.symbol) + R"("})");
+                break;
+            case WebSocketMessageType::Ping:
+                queueMessage(R"({"type":"pong"})");
+                break;
+            case WebSocketMessageType::Unknown:
+                queueMessage(R"({"error":"unknown_message"})");
+                break;
+        }
+
+        readNext();
+    }
+
+    void Server::ClientSession::queueMessage(std::string message) {
+        if (_stopped) {
+            return;
+        }
+
+        _pending_writes.push_back(std::move(message));
+        if (_pending_writes.size() == 1) {
+            writeNext();
+        }
+    }
+
+    void Server::ClientSession::writeNext() {
+        const auto self = shared_from_this();
+        _socket->async_write(
+            boost::asio::buffer(_pending_writes.front()),
+            boost::asio::bind_executor(_strand, [self](const boost::system::error_code &error_code,
+                                                       const std::size_t) {
+                self->handleWrite(error_code);
+            }));
+    }
+
+    void Server::ClientSession::handleWrite(const boost::system::error_code &error_code) {
+        if (error_code) {
+            stop();
+            return;
+        }
+
+        _pending_writes.pop_front();
+        if (!_pending_writes.empty()) {
+            writeNext();
+        }
+    }
+
+    void Server::ClientSession::stop() {
+        if (_stopped) {
+            return;
+        }
+
+        _stopped = true;
+
+        boost::system::error_code ignored_error;
+        auto &socket = boost::beast::get_lowest_layer(*_socket);
+        static_cast<void>(socket.cancel(ignored_error));
+        static_cast<void>(socket.close(ignored_error));
+        _server.unregisterSession(shared_from_this());
+    }
+
     Server::Server(std::shared_ptr<MarketDataStore> market_data_store,
                    std::shared_ptr<orderbook_manager::OrderBookManager> order_book_manager, const unsigned short port)
         : _market_data_store(std::move(market_data_store)),
@@ -26,24 +144,47 @@ namespace server {
           _port(port) {
     }
 
-    Server::OrderParseResult Server::parse_request_return_order(const std::string &value) const {
-        return {};
-    }
-
-    void Server::run() {
+    void Server::run(const std::stop_token &stop_token) {
         try {
             boost::asio::io_context io_context(1);
             tcp::acceptor acceptor(io_context, tcp::endpoint(tcp::v4(), _port));
-            for (;;) {
+            acceptor.non_blocking(true);
+            auto work_guard = boost::asio::make_work_guard(io_context);
+            std::jthread websocket_worker([&io_context]() { io_context.run(); });
+
+            while (!stop_token.stop_requested()) {
                 tcp::socket socket(io_context);
+                boost::system::error_code error_code;
+                static_cast<void>(acceptor.accept(socket, error_code));
+
+                if (error_code == boost::asio::error::would_block
+                    || error_code == boost::asio::error::try_again) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                    continue;
+                }
+                if (error_code) {
+                    std::cerr << "Request handling error: " << error_code.message() << std::endl;
+                    continue;
+                }
 
                 try {
-                    acceptor.accept(socket);
-                    std::thread(&Server::handleSession, this, std::move(socket)).detach();
+                    handleSession(std::move(socket));
                 } catch (const std::exception &exception) {
-                    std::cerr << "Request handing error: " << exception.what() << std::endl;
+                    std::cerr << "Request handling error: " << exception.what() << std::endl;
                 }
             }
+
+            std::vector<ClientSessionPtr> sessions;
+            {
+                std::lock_guard lock(_sessions_mutex);
+                sessions = _sessions;
+            }
+            for (const auto &session: sessions) {
+                session->shutdown();
+            }
+
+            work_guard.reset();
+            websocket_worker.join();
         } catch (const std::exception &e) {
             std::cerr << "Server startup error: " << e.what() << std::endl;
         }
@@ -67,15 +208,9 @@ namespace server {
             const auto session =
                     std::make_shared<boost::beast::websocket::stream<tcp::socket> >(std::move(socket));
             session->accept(request);
-            const auto client_session = std::make_shared<ClientSession>(session);
+            const auto client_session = std::make_shared<ClientSession>(session, *this);
             registerSession(client_session);
-            try {
-                handleWebSocketSession(client_session);
-            } catch (...) {
-                unregisterSession(client_session);
-                throw;
-            }
-            unregisterSession(client_session);
+            client_session->start();
             return;
         }
 
@@ -83,7 +218,7 @@ namespace server {
         http::write(socket, response);
 
         boost::system::error_code error_code;
-        socket.shutdown(tcp::socket::shutdown_send, error_code);
+        static_cast<void>(socket.shutdown(tcp::socket::shutdown_send, error_code));
     }
 
     void Server::broadcastPriceUpdate(const market::MarkPrice &price) {
@@ -94,20 +229,11 @@ namespace server {
             sessions = _sessions;
         }
         for (const auto &session: sessions) {
-            boost::system::error_code ec;
-
             if (!should_deliver_prices(session, price)) {
                 continue;
             }
 
-            {
-                std::lock_guard write_lock(_web_socket_write_mutex);
-                session->_socket->write(boost::asio::buffer(message), ec);
-            }
-
-            if (ec) {
-                unregisterSession(session);
-            }
+            session->send(message);
         }
     }
 
@@ -121,7 +247,7 @@ namespace server {
         if (request.method() == http::verb::get) {
             const std::string target = std::string(request.target());
             constexpr std::string_view symbol_path_prefix = "/api/market/prices/";
-            if (target.rfind(symbol_path_prefix.data(), 0) == 0
+            if (target.starts_with(symbol_path_prefix)
                 && target.size() > symbol_path_prefix.size()) {
                 const std::string symbol = decodeUrlComponent(target.substr(symbol_path_prefix.size()));
                 const auto price = _market_data_store->getPriceForSymbol(symbol);
@@ -139,10 +265,10 @@ namespace server {
             }
 
             constexpr std::string_view orderbook_path_prefix = "/api/market/orderbook/";
-            if (target.rfind(orderbook_path_prefix.data(), 0) == 0 && target.size() > orderbook_path_prefix.size()) {
+            if (target.starts_with(orderbook_path_prefix) && target.size() > orderbook_path_prefix.size()) {
                 const std::string symbol = decodeUrlComponent(target.substr(orderbook_path_prefix.size()));
                 try {
-                    const auto &book = _order_book_manager->get_orderbook(symbol);
+                    const auto book = _order_book_manager->get_orderbook(symbol);
                     response.result(http::status::ok);
                     response.body() = buildOrderBookResponse(symbol, book, 5);
                     response.prepare_payload();
@@ -158,27 +284,6 @@ namespace server {
             response.body() = R"({"error":"not_found"})";
             response.prepare_payload();
             return response;
-        }
-
-        if (request.method() == http::verb::post) {
-            const auto target = std::string(request.target());
-            const std::string symbol = decodeUrlComponent(target.substr(target.rfind('/') + 1));
-            const auto request_body = std::string(request.body());
-            const auto parsed_order = parse_request_return_order(request_body);
-
-            try {
-                std::cout << "Not Implemented Yet" << std::endl;
-            } catch (const std::runtime_error &error) {
-                response.result(http::status::bad_request);
-                boost::json::object body{
-                    {"status", "rejected"},
-                    {"error", error.what()},
-                };
-
-                response.body() = boost::json::serialize(body);
-                response.prepare_payload();
-                return response;
-            }
         }
 
         response.result(http::status::method_not_allowed);
@@ -282,58 +387,6 @@ namespace server {
     }
 
 
-    void Server::handleWebSocketSession(const std::shared_ptr<ClientSession> &client_session) {
-        auto &websocket_session = *client_session->_socket;
-        boost::beast::flat_buffer buffer;
-
-        try {
-            for (;;) {
-                buffer.clear();
-                websocket_session.read(buffer);
-                const auto parsed_message = parseWebSocketMessage(buffer);
-
-                switch (parsed_message.type) {
-                    case WebSocketMessageType::Subscribe: {
-                        subscribe_to_symbol(client_session, parsed_message.symbol);
-                        {
-                            std::lock_guard write_lock(_web_socket_write_mutex);
-                            websocket_session.write(
-                                boost::asio::buffer(std::string(R"({"type":"subscribed","symbol":")")
-                                                    + escapeJson(parsed_message.symbol) + R"("})"));
-                        }
-                        continue;
-                    }
-                    case WebSocketMessageType::Unsubscribe: {
-                        unsubscribe_from_symbol(client_session, parsed_message.symbol);
-                        {
-                            std::lock_guard write_lock(_web_socket_write_mutex);
-                            websocket_session.write(
-                                boost::asio::buffer(std::string(R"({"type":"unsubscribed","symbol":")")
-                                                    + escapeJson(parsed_message.symbol) + R"("})"));
-                        }
-                        continue;
-                    }
-                    case WebSocketMessageType::Ping: {
-                        std::lock_guard write_lock(_web_socket_write_mutex);
-                        websocket_session.write(boost::asio::buffer(std::string(R"({"type":"pong"})")));
-                        continue;
-                    }
-                    case WebSocketMessageType::Unknown: {
-                        std::lock_guard<std::mutex> write_lock(_web_socket_write_mutex);
-                        websocket_session.write(
-                            boost::asio::buffer(std::string(R"({"error":"unknown_message"})")));
-                        continue;
-                    }
-                }
-            }
-        } catch (const boost::system::system_error &exception) {
-            const auto code = exception.code();
-            if (code == boost::beast::websocket::error::closed || code == boost::asio::error::eof) {
-                return;
-            }
-        }
-    }
-
     void Server::registerSession(const ClientSessionPtr &session) {
         std::lock_guard lock(_sessions_mutex);
         _sessions.push_back(session);
@@ -346,18 +399,21 @@ namespace server {
 
     void Server::subscribe_to_symbol(const ClientSessionPtr &client_session,
                                      const std::string &symbol) {
+        std::lock_guard lock(client_session->_subscription_mutex);
         client_session->receive_all_price_updates = false;
         client_session->_subscribed_symbols.insert(symbol);
     }
 
     void Server::unsubscribe_from_symbol(const ClientSessionPtr &client_session,
                                          const std::string &symbol) {
+        std::lock_guard lock(client_session->_subscription_mutex);
         client_session->receive_all_price_updates = false;
         client_session->_subscribed_symbols.erase(symbol);
     }
 
     bool Server::should_deliver_prices(const ClientSessionPtr &client_session,
                                        const market::MarkPrice &price) {
+        std::lock_guard lock(client_session->_subscription_mutex);
         if (client_session->receive_all_price_updates) {
             return true;
         }
@@ -373,12 +429,12 @@ namespace server {
         }
 
         constexpr std::string_view subscribed = "subscribe:";
-        if (message.rfind(subscribed.data(), 0) == 0 && message.size() > subscribed.size()) {
+        if (message.starts_with(subscribed) && message.size() > subscribed.size()) {
             return {WebSocketMessageType::Subscribe, message.substr(subscribed.size())};
         }
 
         constexpr std::string_view unsubscribed = "unsubscribe:";
-        if (message.rfind(unsubscribed.data(), 0) == 0 && message.size() > unsubscribed.size()) {
+        if (message.starts_with(unsubscribed) && message.size() > unsubscribed.size()) {
             return {WebSocketMessageType::Unsubscribe, message.substr(unsubscribed.size())};
         }
 

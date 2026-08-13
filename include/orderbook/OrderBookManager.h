@@ -1,6 +1,7 @@
 #pragma once
 
 #include "orderbook/OrderBook.h"
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -14,7 +15,7 @@ namespace orderbook_manager {
 
     std::vector<orderbook::Trade> add_order(const orderbook::Order &order);
 
-    [[nodiscard]] const orderbook::OrderBook &get_orderbook(const std::string &symbol) const;
+    [[nodiscard]] orderbook::OrderBook get_orderbook(const std::string &symbol) const;
 
     [[nodiscard]] bool has_active_order(const std::string &order_id) const;
 
@@ -30,5 +31,6 @@ namespace orderbook_manager {
     std::unordered_map<std::string, orderbook::OrderBook> _order_books;
     std::unordered_map<std::string, orderbook::OrderState> _active_orders;
     std::unordered_set<std::string> _seen_order_ids;
+    mutable std::mutex _mutex;
   };
 } // namespace orderbook_manager

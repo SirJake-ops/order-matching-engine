@@ -1,3 +1,6 @@
+#include <thread>
+#include <vector>
+
 #include "gtest/gtest.h"
 
 #include "orderbook/OrderBookManager.h"
@@ -162,7 +165,7 @@ TEST(OrderBookManagerTest, RejectsInvalidLimitPriceAtManagerLevel) {
 TEST(OrderBookManagerTest, GetOrderBookThrowsForUnknownSymbol) {
     OrderBookManager manager({"AAPL"});
 
-    EXPECT_THROW(manager.get_orderbook("MSFT"), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(manager.get_orderbook("MSFT")), std::runtime_error);
 }
 
 TEST(OrderBookManagerTest, AddOrderForUnknownSymbolDoesNotCreateBook) {
@@ -171,6 +174,30 @@ TEST(OrderBookManagerTest, AddOrderForUnknownSymbolDoesNotCreateBook) {
     EXPECT_THROW(manager.add_order(makeOrder("msft-buy-1", Side::BUY, 100.0, 5, "MSFT")),
                  std::runtime_error);
 
-    EXPECT_THROW(manager.get_orderbook("MSFT"), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(manager.get_orderbook("MSFT")), std::runtime_error);
+}
+
+TEST(OrderBookManagerTest, ConcurrentOrdersAndSnapshotsRemainConsistent) {
+    OrderBookManager manager({"AAPL"});
+
+    auto add_orders = [&](const std::string &prefix, const double price) {
+        for (int index = 0; index < 100; ++index) {
+            manager.add_order(makeOrder(prefix + std::to_string(index), Side::BUY, price, 1));
+        }
+    };
+
+    std::thread first_writer(add_orders, "first-", 99.0);
+    std::thread second_writer(add_orders, "second-", 98.0);
+    std::thread reader([&]() {
+        for (int index = 0; index < 100; ++index) {
+            static_cast<void>(manager.get_orderbook("AAPL").bid_depth(5));
+        }
+    });
+
+    first_writer.join();
+    second_writer.join();
+    reader.join();
+
+    EXPECT_EQ(manager.get_orderbook("AAPL").get_orders_buys().size(), 200);
 }
 } // namespace

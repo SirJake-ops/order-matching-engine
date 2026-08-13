@@ -1,4 +1,6 @@
+#include <atomic>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -50,5 +52,27 @@ namespace {
         const auto prices = market::PriceGenerator::generatePrices({});
 
         EXPECT_TRUE(prices.empty());
+    }
+
+    TEST(PriceGeneratorTest, ConcurrentGenerationPreservesValidPriceState) {
+        std::atomic<int> generated_prices{0};
+        std::vector<std::thread> workers;
+
+        for (int worker = 0; worker < 4; ++worker) {
+            workers.emplace_back([&]() {
+                for (int update = 0; update < 100; ++update) {
+                    const auto price = market::PriceGenerator::generatePrice("AAPL");
+                    if (price.getBid() > 0.0 && price.getAsk() > price.getBid()) {
+                        ++generated_prices;
+                    }
+                }
+            });
+        }
+
+        for (auto &worker: workers) {
+            worker.join();
+        }
+
+        EXPECT_EQ(generated_prices.load(), 400);
     }
 }

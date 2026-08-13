@@ -1,3 +1,4 @@
+#include <atomic>
 #include <chrono>
 #include <deque>
 #include <memory>
@@ -51,6 +52,7 @@ namespace {
 
     private:
         boost::asio::io_context server_io;
+        boost::asio::executor_work_guard<boost::asio::io_context::executor_type> server_work_guard;
         tcp::acceptor acceptor;
         std::shared_ptr<MarketDataStore> store;
         Server server;
@@ -58,12 +60,15 @@ namespace {
         boost::asio::io_context client_io;
         std::deque<std::unique_ptr<Client> > clients;
         std::vector<std::thread> server_threads;
+        std::thread server_io_thread;
 
     public:
         WebSocketIntegrationHarness()
-            : acceptor(server_io, tcp::endpoint(tcp::v4(), 0)),
+            : server_work_guard(boost::asio::make_work_guard(server_io)),
+              acceptor(server_io, tcp::endpoint(tcp::v4(), 0)),
               store(std::make_shared<MarketDataStore>()),
               server(store, makeOrderBookManager()), port(acceptor.local_endpoint().port()) {
+            server_io_thread = std::thread([this]() { server_io.run(); });
         }
 
         ~WebSocketIntegrationHarness() {
@@ -78,6 +83,12 @@ namespace {
                 if (thread.joinable()) {
                     thread.join();
                 }
+            }
+
+            server_work_guard.reset();
+            server_io.stop();
+            if (server_io_thread.joinable()) {
+                server_io_thread.join();
             }
         }
 
@@ -276,7 +287,7 @@ namespace {
         Server server(std::make_shared<MarketDataStore>(), makeOrderBookManager());
         auto session =
                 std::make_shared<boost::beast::websocket::stream<Server::tcp::socket> >(io_context);
-        const auto client_session = std::make_shared<Server::ClientSession>(session);
+        const auto client_session = std::make_shared<Server::ClientSession>(session, server);
 
         server.registerSession(client_session);
         EXPECT_EQ(server._sessions.size(), 1);
@@ -298,13 +309,14 @@ namespace {
         Server server(std::make_shared<MarketDataStore>(), makeOrderBookManager());
         auto session =
                 std::make_shared<boost::beast::websocket::stream<Server::tcp::socket> >(io_context);
-        const auto client_session = std::make_shared<Server::ClientSession>(session);
+        const auto client_session = std::make_shared<Server::ClientSession>(session, server);
         const market::MarkPrice price("AAPL", 189.45, 189.50, 189.47, 900);
 
         server.registerSession(client_session);
         ASSERT_EQ(server._sessions.size(), 1);
 
         server.broadcastPriceUpdate(price);
+        io_context.poll();
 
         EXPECT_TRUE(server._sessions.empty());
     }
@@ -314,7 +326,8 @@ namespace {
         auto websocket =
                 std::make_shared<boost::beast::websocket::stream<Server::tcp::socket> >(io_context);
 
-        const auto client_session = std::make_shared<Server::ClientSession>(websocket);
+        Server server(std::make_shared<MarketDataStore>(), makeOrderBookManager());
+        const auto client_session = std::make_shared<Server::ClientSession>(websocket, server);
 
         const market::MarkPrice price("AAPL", 189.45, 189.50, 189.47, 900);
         EXPECT_TRUE(Server::should_deliver_prices(client_session, price));
@@ -325,7 +338,8 @@ namespace {
         auto websocket =
                 std::make_shared<boost::beast::websocket::stream<Server::tcp::socket> >(io_context);
 
-        const auto client_session = std::make_shared<Server::ClientSession>(websocket);
+        Server server(std::make_shared<MarketDataStore>(), makeOrderBookManager());
+        const auto client_session = std::make_shared<Server::ClientSession>(websocket, server);
 
         client_session->receive_all_price_updates = false;
         client_session->_subscribed_symbols.insert("AAPL");
@@ -341,7 +355,8 @@ namespace {
         boost::asio::io_context io_context;
         auto websocket =
                 std::make_shared<boost::beast::websocket::stream<Server::tcp::socket> >(io_context);
-        const auto client_session = std::make_shared<Server::ClientSession>(websocket);
+        Server server(std::make_shared<MarketDataStore>(), makeOrderBookManager());
+        const auto client_session = std::make_shared<Server::ClientSession>(websocket, server);
 
         Server::subscribe_to_symbol(client_session, "AAPL");
 
@@ -353,7 +368,8 @@ namespace {
         boost::asio::io_context io_context;
         auto websocket =
                 std::make_shared<boost::beast::websocket::stream<Server::tcp::socket> >(io_context);
-        const auto client_session = std::make_shared<Server::ClientSession>(websocket);
+        Server server(std::make_shared<MarketDataStore>(), makeOrderBookManager());
+        const auto client_session = std::make_shared<Server::ClientSession>(websocket, server);
         const market::MarkPrice price("AAPL", 189.45, 189.50, 189.47, 900);
 
         Server::subscribe_to_symbol(client_session, "AAPL");
@@ -429,5 +445,47 @@ namespace {
         harness.getServer().broadcastPriceUpdate(market::MarkPrice("AAPL", 189.45, 189.50, 189.47, 900));
 
         EXPECT_FALSE(harness.hasPendingBytes(client));
+    }
+
+    TEST(ServerWebSocketIntegrationTest, SubscriptionChangesAndBroadcastsCanRunConcurrently) {
+        WebSocketIntegrationHarness harness;
+        auto &client = harness.connectClient();
+        std::atomic<bool> start_broadcasting{false};
+
+        std::thread broadcaster([&]() {
+            while (!start_broadcasting.load()) {
+                std::this_thread::yield();
+            }
+            for (int update = 0; update < 100; ++update) {
+                harness.getServer().broadcastPriceUpdate(
+                    market::MarkPrice(update % 2 == 0 ? "AAPL" : "MSFT", 100.0, 100.1, 100.0, 10));
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        });
+
+        start_broadcasting = true;
+        for (int command = 0; command < 20; ++command) {
+            const bool subscribing = command % 2 == 0;
+            harness.writeMessage(client, subscribing ? "subscribe:AAPL" : "unsubscribe:AAPL");
+            const std::string expected_type = subscribing ? R"("type":"subscribed")"
+                                                          : R"("type":"unsubscribed")";
+
+            for (;;) {
+                const auto message = harness.readMessage(client);
+                if (message.find(expected_type) != std::string::npos) {
+                    break;
+                }
+            }
+        }
+
+        broadcaster.join();
+    }
+
+    TEST(ServerLifecycleTest, StopTokenEndsServerRunLoop) {
+        Server server(std::make_shared<MarketDataStore>(), makeOrderBookManager(), 0);
+        std::jthread server_thread([&](const std::stop_token stop_token) { server.run(stop_token); });
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        server_thread.request_stop();
     }
 } // namespace

@@ -5,9 +5,11 @@
 #ifndef TRADINGEXCHANGE_SERVER_H
 #define TRADINGEXCHANGE_SERVER_H
 
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <set>
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -25,7 +27,7 @@ namespace server {
                         std::shared_ptr<orderbook_manager::OrderBookManager> order_book_manager,
                         unsigned short port = 8080);
 
-        void run();
+        void run(const std::stop_token &stop_token = {});
 
         void handleSession(boost::asio::ip::tcp::socket socket);
 
@@ -44,23 +46,36 @@ namespace server {
         using Response = boost::beast::http::response<boost::beast::http::string_body>;
         using WebsocketSession = std::shared_ptr<boost::beast::websocket::stream<tcp::socket> >;
 
-        struct ClientSession {
-            explicit ClientSession(WebsocketSession socket) : _socket(std::move(socket)) {
-            }
+        struct ClientSession : std::enable_shared_from_this<ClientSession> {
+            ClientSession(WebsocketSession socket, Server &server);
+
+            void start();
+            void send(std::string message);
+            void shutdown();
+
+        private:
+            friend class Server;
+
+            void readNext();
+            void handleRead(const boost::system::error_code &error_code);
+            void queueMessage(std::string message);
+            void writeNext();
+            void handleWrite(const boost::system::error_code &error_code);
+            void stop();
 
             WebsocketSession _socket;
+            Server &_server;
+            boost::asio::strand<boost::asio::io_context::executor_type> _strand;
+            boost::beast::flat_buffer _read_buffer;
+            std::deque<std::string> _pending_writes;
+            bool _stopped{false};
+
+            mutable std::mutex _subscription_mutex;
             std::set<std::string> _subscribed_symbols;
             bool receive_all_price_updates{true};
         };
 
-        struct OrderParseResult {
-            std::optional<orderbook::OrderRequest> order_request;
-            std::string error_message;
-        };
-
         using ClientSessionPtr = std::shared_ptr<ClientSession>;
-
-        OrderParseResult parse_request_return_order(const std::string &value) const;
 
         [[nodiscard]] Response handleRequest(const Request &request) const;
 
@@ -77,8 +92,6 @@ namespace server {
         [[nodiscard]] static std::string buildOrderBookResponse(const std::string &symbol,
                                                                 const orderbook::OrderBook &order_book,
                                                                 std::size_t levels);
-
-        void handleWebSocketSession(const ClientSessionPtr &client_session);
 
         void registerSession(const ClientSessionPtr &client_session);
 
@@ -99,7 +112,6 @@ namespace server {
         std::shared_ptr<orderbook_manager::OrderBookManager> _order_book_manager;
 
         mutable std::mutex _sessions_mutex;
-        mutable std::mutex _web_socket_write_mutex;
         std::vector<ClientSessionPtr> _sessions;
         unsigned short _port;
     };

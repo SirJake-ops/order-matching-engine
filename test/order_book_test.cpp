@@ -1,3 +1,4 @@
+#include <limits>
 #include <stdexcept>
 
 #include "gtest/gtest.h"
@@ -330,5 +331,18 @@ namespace {
         EXPECT_TRUE(trades.empty());
         EXPECT_TRUE(book.get_orders_buys().empty());
         EXPECT_TRUE(book.get_orders_sells().empty());
+    }
+
+    TEST(OrderBookTest, RejectsNonFinitePriceAndUnknownEnumValues) {
+        OrderBook book("AAPL");
+
+        EXPECT_THROW(book.addOrder(makeOrder("nan", Side::BUY,
+                                             std::numeric_limits<double>::quiet_NaN(), 1)),
+                     std::runtime_error);
+        EXPECT_THROW(book.addOrder(makeOrder("side", static_cast<Side>(99), 100.0, 1)),
+                     std::runtime_error);
+        EXPECT_THROW(book.addOrder(makeOrder("type", Side::BUY, 100.0, 1, 1,
+                                             static_cast<OrderType>(99))),
+                     std::runtime_error);
     }
 } // namespace

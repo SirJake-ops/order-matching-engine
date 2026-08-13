@@ -8,18 +8,25 @@ This backlog tracks the path from the current market-data simulator toward a tru
 - A real limit order book exists in `orderbook::OrderBook`, with limit and market order matching, FIFO behavior at a price level, cancellation, best bid/ask helpers, depth aggregation, and unit tests.
 - The market-data service exposes HTTP price lookup and WebSocket price streaming.
 - WebSocket clients now have per-session symbol subscription state for price updates.
+- WebSocket I/O is serialized per session with an Asio strand and outbound queue; subscription state is mutex-protected.
 - `MarketDataStore` stores the latest price snapshot per symbol behind a mutex.
 - Early order-entry domain structs exist in `orderbook::OrderRequest`, `OrderResult`, and `OrderState`.
-- Early `OrderBookManager` scaffolding exists with multi-symbol construction, initial unit tests, explicit unknown-symbol exceptions, and returned trade results, but it is not yet a complete order manager.
+- `OrderBookManager` owns synchronized per-symbol books, rejects invalid submissions, tracks active and seen order ids, and returns snapshot copies for readers.
 - The application still behaves mostly like a market-data simulator, not an order-driven exchange.
 
 ## Next Recommended Step
 
+### EX-020: Implement `POST /api/orders`
+
+Status: Not started
+
+The existing market-data, WebSocket, event-bus, and order-manager components have been concurrency-hardened. The next feature step is the order-entry endpoint described under Phase 2.
+
+## Recently Completed / Mostly Complete
+
 ### EX-011A: Stabilize the Early Order Book Manager
 
 Status: Complete
-
-Goal: turn the current `OrderBookManager` scaffold into a tested, reliable component before adding HTTP order entry.
 
 Acceptance criteria:
 - [x] Add unit tests for construction and routing orders to an existing symbol book.
@@ -36,8 +43,24 @@ Notes:
 - `OrderBookManager` currently accepts a list of configured symbols.
 - `add_order` validates that a book exists, propagates errors to callers, and returns the trades produced by the underlying book.
 - `OrderBookManager` now tracks active orders and seen order ids, updates active state as trades fill orders, and removes fully filled or market orders from the active set.
+- Manager operations are serialized, and `get_orderbook` returns a snapshot so internal book references cannot escape synchronization.
 
-## Recently Completed / Mostly Complete
+### EX-002: Harden Existing Concurrent State
+
+Status: Complete
+
+Acceptance criteria:
+- [x] Serialize WebSocket reads, writes, and close handling per session.
+- [x] Protect per-session subscription state from concurrent broadcast and command handling.
+- [x] Make event-bus subscription and publication thread-safe without invoking callbacks under its mutex.
+- [x] Protect `OrderBookManager` books, active states, and seen order ids.
+- [x] Protect the shared price-generator state.
+- [x] Add concurrent regression coverage and a ThreadSanitizer build verification path.
+
+Notes:
+- WebSocket sessions own an outbound queue and use an Asio strand; one slow client no longer holds a process-wide write mutex.
+- The current manager uses a single correctness-first mutex. Per-symbol execution can be introduced later if profiling justifies it.
+- Server shutdown is stop-token driven, and request threads are no longer detached.
 
 ### EX-001: Finish WebSocket Price Subscription Behavior
 
@@ -92,7 +115,8 @@ Notes:
 - The manager owns one book per configured symbol and rejects duplicate configured symbols.
 - Unknown symbols, duplicate order ids, invalid quantity, and invalid limit price are rejected at the manager level before routing to an order book.
 - `OrderBookManager` tracks active orders by order id, keeps a seen-order-id set so ids cannot be reused after fills, and updates active state as trades are applied.
-- `OrderBookManager` is not yet wired into the API or transport layers.
+- `OrderBookManager` is wired into the transport layer for read-only depth snapshots, but not into order entry.
+
 ### EX-012: Add Trade and Execution Reports
 
 Status: Not started
@@ -195,12 +219,12 @@ Acceptance criteria:
 
 ### EX-041: Make the Event Bus Thread-Safe
 
-Status: Not started
+Status: Complete
 
 Acceptance criteria:
-- Protect subscriber registration and publishing from concurrent access issues.
-- Decide whether callbacks run synchronously or through a queue.
-- Add tests for multiple subscribers and basic concurrent publish behavior.
+- [x] Protect subscriber registration and publishing from concurrent access issues.
+- [x] Keep callbacks synchronous, using a subscriber snapshot so callbacks run without the bus mutex held.
+- [x] Add tests for concurrent subscription/publication and reentrant subscription.
 
 ## Phase 5: Configuration and Static Data
 
@@ -226,8 +250,8 @@ Acceptance criteria:
 
 ### Local Test Discovery Note
 
-- The existing `build/debug` tree may be stale until CMake/Ninja is repaired and tests are rediscovered.
-- When the build environment is healthy, rerun configure/build/test before relying on the discovered test list.
+- A fresh debug configure/build discovers the full CTest suite successfully.
+- Run the normal debug preset and the ThreadSanitizer configuration before relying on concurrency-sensitive changes.
 
 ### EX-060: Add WebSocket Integration Tests
 

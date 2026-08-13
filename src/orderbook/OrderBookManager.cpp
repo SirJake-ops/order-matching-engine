@@ -1,6 +1,7 @@
 #include "orderbook/OrderBookManager.h"
 #include "orderbook/OrderBook.h"
 
+#include <cmath>
 #include <stdexcept>
 
 orderbook_manager::OrderBookManager::OrderBookManager(const std::vector<std::string> &symbols) {
@@ -15,6 +16,7 @@ orderbook_manager::OrderBookManager::OrderBookManager(const std::vector<std::str
 
 std::vector<orderbook::Trade>
 orderbook_manager::OrderBookManager::add_order(const orderbook::Order &order) {
+    std::lock_guard lock(_mutex);
     validate_order(order);
     auto &book = _order_books.at(order._symbol);
 
@@ -33,8 +35,9 @@ orderbook_manager::OrderBookManager::add_order(const orderbook::Order &order) {
     return trades;
 }
 
-const orderbook::OrderBook &
+orderbook::OrderBook
 orderbook_manager::OrderBookManager::get_orderbook(const std::string &symbol) const {
+    std::lock_guard lock(_mutex);
     const auto it = _order_books.find(symbol);
     if (it == _order_books.end()) {
         throw std::runtime_error("Order book for symbol " + symbol + " does not exist");
@@ -44,6 +47,7 @@ orderbook_manager::OrderBookManager::get_orderbook(const std::string &symbol) co
 }
 
 bool orderbook_manager::OrderBookManager::has_active_order(const std::string &order_id) const {
+    std::lock_guard lock(_mutex);
     return _active_orders.contains(order_id);
 }
 
@@ -64,7 +68,16 @@ void orderbook_manager::OrderBookManager::validate_order(const orderbook::Order 
         throw std::runtime_error("Invalid order");
     }
 
-    if (order._type == orderbook::OrderType::LIMIT && order._price <= 0) {
+    if (order._side != orderbook::Side::BUY && order._side != orderbook::Side::SELL) {
+        throw std::runtime_error("Invalid order side");
+    }
+
+    if (order._type != orderbook::OrderType::LIMIT && order._type != orderbook::OrderType::MARKET) {
+        throw std::runtime_error("Invalid order type");
+    }
+
+    if (!std::isfinite(order._price)
+        || (order._type == orderbook::OrderType::LIMIT && order._price <= 0)) {
         throw std::runtime_error("Invalid order");
     }
 }

@@ -10,7 +10,6 @@
 #include <map>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -98,7 +97,6 @@ class OrderBook {
     std::string _symbol;
     std::map<double, std::deque<Order>, std::greater<>> _buy_orders;
     std::map<double, std::deque<Order>, std::less<>> _sell_orders;
-    std::unordered_map<std::string, std::vector<Trade>> _trade_history;
 };
 } // namespace orderbook
 

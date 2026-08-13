@@ -15,7 +15,7 @@
 - `include`: public headers
 - `src/pricing`: market price models and generation
 - `src/simulation`: market simulator
-- `src/orderbook`: order book simulator
+- `src/orderbook`: limit order book and multi-symbol order manager
 - `src/events`: event bus and related types
 - `src/transport`: server and transport-layer code
 - `test`: CMake-managed tests
@@ -25,7 +25,7 @@
 Requirements:
 
 - CMake 3.28+
-- A C++23 compiler
+- A C++20 compiler
 - Boost
 
 Example build:
@@ -33,6 +33,14 @@ Example build:
 ```bash
 cmake --preset debug
 cmake --build --preset debug
+```
+
+For concurrency-sensitive changes, run the ThreadSanitizer preset as well:
+
+```bash
+cmake --preset tsan
+cmake --build --preset tsan
+ctest --preset tsan
 ```
 
 ## Run

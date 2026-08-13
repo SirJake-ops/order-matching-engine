@@ -12,6 +12,7 @@ enable_testing()
 add_executable(
         TradingExchangeEngineTest
         test_main.cpp
+        event_bus_test.cpp
         market_data_store_test.cpp
         market_simulator_test.cpp
         order_book_manager_test.cpp

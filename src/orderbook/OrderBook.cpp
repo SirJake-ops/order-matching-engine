@@ -5,6 +5,7 @@
 #include "orderbook/OrderBook.h"
 
 #include <algorithm>
+#include <cmath>
 #include <ranges>
 #include <vector>
 
@@ -21,7 +22,16 @@ std::vector<orderbook::Trade> orderbook::OrderBook::addOrder(const Order &order)
         throw std::runtime_error("Invalid order");
     }
 
-    if (order._type == OrderType::LIMIT && order._price <= 0) {
+    if (order._side != Side::BUY && order._side != Side::SELL) {
+        throw std::runtime_error("Invalid order side");
+    }
+
+    if (order._type != OrderType::LIMIT && order._type != OrderType::MARKET) {
+        throw std::runtime_error("Invalid order type");
+    }
+
+    if (!std::isfinite(order._price)
+        || (order._type == OrderType::LIMIT && order._price <= 0)) {
         throw std::runtime_error("Invalid order");
     }
 
@@ -77,14 +87,6 @@ std::vector<orderbook::Trade> orderbook::OrderBook::addOrder(const Order &order)
 
         if (incoming_order._quantity > 0 && incoming_order._type == OrderType::LIMIT) {
             _buy_orders[incoming_order._price].push_back(incoming_order);
-
-            const Trade trade{
-                incoming_order._id, incoming_order._id, incoming_order._symbol,
-                incoming_order._price, incoming_order._quantity,
-                incoming_order._timestamp
-            };
-
-            _trade_history[incoming_order._id].push_back(trade);
         }
     } else {
         while (incoming_order._quantity > 0 && !_buy_orders.empty()) {
@@ -118,14 +120,6 @@ std::vector<orderbook::Trade> orderbook::OrderBook::addOrder(const Order &order)
 
         if (incoming_order._quantity > 0 && incoming_order._type == OrderType::LIMIT) {
             _sell_orders[incoming_order._price].push_back(incoming_order);
-
-            const Trade trade{
-                incoming_order._id, incoming_order._id, incoming_order._symbol,
-                incoming_order._price, incoming_order._quantity,
-                incoming_order._timestamp
-            };
-
-            _trade_history[incoming_order._id].push_back(trade);
         }
     }
 

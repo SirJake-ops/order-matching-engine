@@ -29,6 +29,27 @@
       }
     },
     {
+      "name": "asan",
+      "inherits": "debug",
+      "displayName": "Address and UndefinedBehavior Sanitizers",
+      "description": "Debug build with memory, leak, and undefined-behavior checks.",
+      "binaryDir": "${sourceDir}/build/asan",
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer -O1 -g",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined"
+      }
+    },
+    {
+      "name": "coverage",
+      "inherits": "debug",
+      "displayName": "Coverage",
+      "description": "GCC debug build with gcov coverage instrumentation.",
+      "binaryDir": "${sourceDir}/build/coverage",
+      "cacheVariables": {
+        "ENABLE_COVERAGE": "ON"
+      }
+    },
+    {
       "name": "tsan",
       "displayName": "ThreadSanitizer",
       "description": "Debug build with thread-race instrumentation.",
@@ -51,10 +72,9 @@
       "name": "release",
       "configurePreset": "release"
     },
-    {
-      "name": "tsan",
-      "configurePreset": "tsan"
-    }
+    { "name": "asan", "configurePreset": "asan" },
+    { "name": "coverage", "configurePreset": "coverage" },
+    { "name": "tsan", "configurePreset": "tsan" }
   ],
   "testPresets": [
     {
@@ -64,12 +84,9 @@
         "outputOnFailure": true
       }
     },
-    {
-      "name": "tsan",
-      "configurePreset": "tsan",
-      "output": {
-        "outputOnFailure": true
-      }
-    }
+    { "name": "release", "inherits": "debug", "configurePreset": "release" },
+    { "name": "asan", "inherits": "debug", "configurePreset": "asan" },
+    { "name": "coverage", "inherits": "debug", "configurePreset": "coverage" },
+    { "name": "tsan", "inherits": "debug", "configurePreset": "tsan" }
   ]
 }

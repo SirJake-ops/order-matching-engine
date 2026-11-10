@@ -10,6 +10,7 @@ cmake-build-*/
 build/
 build-*/
 out/
+dist/
 
 # In-source CMake outputs
 CMakeCache.txt

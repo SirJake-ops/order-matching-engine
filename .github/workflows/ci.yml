@@ -1,0 +1,189 @@
+name: CI / Release
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+# All jobs require a public repository: standard hosted runners are free there.
+# No Actions caches, artifact uploads, container registry, or cloud services.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: '2'
+  ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+  UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+  TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.name }}
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: GCC Debug, preset: debug, cc: gcc-13, cxx: g++-13 }
+          - { name: GCC Release, preset: release, cc: gcc-13, cxx: g++-13 }
+          - { name: Clang Debug, preset: debug, cc: clang-18, cxx: clang++-18 }
+          - { name: Address / UB Sanitizers, preset: asan, cc: clang-18, cxx: clang++-18 }
+          - { name: ThreadSanitizer, preset: tsan, cc: clang-18, cxx: clang++-18 }
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+      PRESET: ${{ matrix.preset }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            cmake ninja-build g++-13 clang-18 clang-tools-18 libclang-rt-18-dev libboost-dev
+
+      - name: Prepare ThreadSanitizer address space
+        if: matrix.preset == 'tsan'
+        # Older TSan runtimes can fail before main with high-entropy ASLR.
+        # This setting applies only to this disposable GitHub runner.
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+
+      - name: Configure
+        run: cmake --preset "$PRESET"
+
+      - name: Build
+        run: cmake --build --preset "$PRESET"
+
+      - name: Test
+        run: ctest --preset "$PRESET" --parallel 2 --timeout 30 --no-tests=error
+
+      - name: Smoke test the release service
+        if: matrix.preset == 'release'
+        run: python3 scripts/smoke-test.py build/release/market_data_service
+
+      - name: Write job summary
+        if: always()
+        env:
+          CHECK_NAME: ${{ matrix.name }}
+          CHECK_STATUS: ${{ job.status }}
+        run: |
+          printf '### %s\n\nResult: **%s**\n' "$CHECK_NAME" "$CHECK_STATUS" >> "$GITHUB_STEP_SUMMARY"
+
+  coverage:
+    name: Coverage
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CC: gcc-13
+      CXX: g++-13
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install build and coverage tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends cmake ninja-build g++-13 libboost-dev gcovr
+
+      - name: Configure
+        run: cmake --preset coverage
+
+      - name: Build
+        run: cmake --build --preset coverage
+
+      - name: Test
+        run: ctest --preset coverage --parallel 2 --timeout 30 --no-tests=error
+
+      - name: Report source coverage
+        # Report existing coverage without imposing an arbitrary percentage gate.
+        run: |
+          gcovr --root . --filter 'src/' --gcov-executable gcov-13 \
+            --txt --print-summary build/coverage | tee build/coverage/coverage.txt
+          {
+            printf '### Source coverage\n\n```text\n'
+            cat build/coverage/coverage.txt
+            printf '\n```\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  quality-gate:
+    name: CI passed
+    if: ${{ always() && github.event.repository.private == false }}
+    needs: [build-and-test, coverage]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require all checks to pass
+        env:
+          BUILD_RESULT: ${{ needs.build-and-test.result }}
+          COVERAGE_RESULT: ${{ needs.coverage.result }}
+        run: |
+          test "$BUILD_RESULT" = success
+          test "$COVERAGE_RESULT" = success
+
+  release:
+    name: Publish Linux release
+    needs: quality-gate
+    if: >-
+      github.event.repository.private == false &&
+      github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      CC: gcc-13
+      CXX: g++-13
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - name: Check out tested source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends cmake ninja-build g++-13 libboost-dev
+
+      - name: Build and test release
+        run: |
+          cmake --preset release
+          cmake --build --preset release
+          ctest --preset release --parallel 2 --timeout 30 --no-tests=error
+          python3 scripts/smoke-test.py build/release/market_data_service
+
+      - name: Package binary and checksum
+        run: bash scripts/package-release.sh build/release/market_data_service "$RELEASE_TAG"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # Re-running an already published version leaves its files unchanged.
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; skipping publication."
+            exit 0
+          fi
+          prerelease=()
+          if [[ "${RELEASE_TAG%%+*}" == *-* ]]; then prerelease+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" dist/*.tar.gz dist/SHA256SUMS \
+            --verify-tag --generate-notes --title "Exchange Engine $RELEASE_TAG" "${prerelease[@]}"

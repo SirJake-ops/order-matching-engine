@@ -33,6 +33,7 @@ Example build:
 ```bash
 cmake --preset debug
 cmake --build --preset debug
+ctest --preset debug
 ```
 
 For concurrency-sensitive changes, run the ThreadSanitizer preset as well:
@@ -42,6 +43,20 @@ cmake --preset tsan
 cmake --build --preset tsan
 ctest --preset tsan
 ```
+
+## CI and Releases
+
+GitHub Actions builds and tests pull requests and pushes to `master`. The pipeline
+checks GCC Debug/Release, Clang Debug, AddressSanitizer/UndefinedBehaviorSanitizer,
+ThreadSanitizer, source coverage, and the running service's HTTP endpoints.
+
+Push a version tag such as `v1.0.0` to run all checks and publish a Linux binary
+and SHA-256 checksum as a GitHub Release. No hosting account or deployment secrets
+are needed. Jobs run only in public repositories on standard Ubuntu runners;
+there are no Actions cache or artifact uploads.
+
+See [CI/CD documentation](docs/ci-cd.md) for local commands, release instructions,
+cost details, and runner compatibility notes.
 
 ## Run
 

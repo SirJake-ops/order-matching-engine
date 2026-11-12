@@ -25,6 +25,45 @@ The smoke test launches the built executable, waits up to 15 seconds for prices,
 validates price and order-book responses, checks URL-encoded symbols and a missing
 symbol's HTTP 404, and requires clean shutdown on SIGTERM. It needs port 8080 free.
 
+## Observed setup timeout — 2026-11-09 local / 2026-11-10 UTC
+
+Reviewed [run 42757306965](https://github.com/SirJake-ops/order-matching-engine/actions/runs/42757306965)
+for commit `3dc19cf6b4b6c480c09dd7aedfce486156d66159`.
+
+| Job | Runner region | Build-tool setup result |
+| --- | --- | --- |
+| [GCC Debug](https://github.com/SirJake-ops/order-matching-engine/actions/runs/42757306965/job/129634555932) | westus3 | Completed in about 11 seconds; all 68 tests passed afterward |
+| [GCC Release](https://github.com/SirJake-ops/order-matching-engine/actions/runs/42757306965/job/129634555922) | westus2 | Stayed in `apt-get update` until cancellation around the 20-minute job limit |
+
+Release repeatedly logged `Ign` entries for `azure.archive.ubuntu.com` repository
+metadata and package indexes. Some metadata arrived from `archive.ubuntu.com`, but
+there was no completed index update or package-install output before cancellation.
+Boost installation, CMake configuration, compilation, tests, and the service smoke
+test were never reached. GitHub prints the entire step's script at its start;
+seeing the install command and `libboost-dev` there does not mean it executed.
+
+The logs support a runner-to-package-mirror connectivity stall. They do not establish
+the underlying DNS, routing, proxy, or mirror-service failure. Debug and Release use
+the same install script and package list, on separate hosted VMs, so one job can
+succeed while another encounters a different network path. See
+[GitHub's hosted-runner model](https://docs.github.com/en/actions/how-tos/manage-runners/github-hosted-runners/use-github-hosted-runners).
+
+Clang Debug, ASan/UBSan, ThreadSanitizer, and Coverage succeeded. The `CI passed`
+gate failed because the matrix did not finish successfully. `Publish Linux release`
+was skipped; this was the GCC Release matrix job's setup failure.
+
+Proposed response: rerun the failed jobs first. For durable setup improvements,
+split index refresh and package installation into separately visible steps, add
+bounded APT retries and HTTP/HTTPS timeouts, fail clearly on incomplete index
+updates, and cap setup time separately from the whole job. If mirror failures
+recur, evaluate a supported mirror fallback. APT documents
+[retry/transport settings](https://manpages.ubuntu.com/manpages/noble/man5/apt.conf.5.html)
+and [update error handling](https://manpages.ubuntu.com/manpages/noble/man8/apt-get.8.html).
+These are recommendations; the workflow has not been changed or rerun as part of
+this diagnosis.
+
+## ThreadSanitizer runner setup
+
 ThreadSanitizer's job sets `vm.mmap_rnd_bits=28` on its disposable runner before
 building. This avoids sanitizer startup failures from incompatible address-space
 layouts. The workflow does not change your workstation's settings. See the
